@@ -1,0 +1,20 @@
+import type { ApiResult } from "./apiTypes";
+
+export function getDoctorDashboard(doctorId: number): Promise<ApiResult<any>>;
+export function getAppointmentsByDate(doctorId: number, date: string): Promise<ApiResult<any>>;
+export function getAppointments(params?: Record<string, any>): Promise<ApiResult<any>>;
+export function updateAppointmentStatus(appointmentId: number, status: string): Promise<ApiResult<any>>;
+export function getPatientMedicalRecords(patientId: number): Promise<ApiResult<any>>;
+export function getDoctorDetails(doctorId: number): Promise<ApiResult<any>>;
+export function getDoctorPatients(doctorId: number): Promise<ApiResult<any>>;
+export function getPatientDetails(patientId: number): Promise<ApiResult<any>>;
+export function saveDiagnosis(patientId: number, diagnosisData: Record<string, any>): Promise<ApiResult<any>>;
+export function getMedications(): Promise<ApiResult<any>>;
+export function getPatientProfile(patientId: number): Promise<ApiResult<any>>;
+export function getAllergies(): Promise<ApiResult<any>>;
+export function addAllergy(name: string): Promise<ApiResult<any>>;
+export function getMedicalConditions(): Promise<ApiResult<any>>;
+export function addMedicalCondition(name: string): Promise<ApiResult<any>>;
+export function getSurgeryTypes(): Promise<ApiResult<any>>;
+export function addSurgeryType(name: string): Promise<ApiResult<any>>;
+export function updatePatientInfo(patientId: number, data: Record<string, any>): Promise<ApiResult<any>>;
