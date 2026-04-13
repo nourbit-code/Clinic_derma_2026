@@ -211,12 +211,13 @@ export const saveDiagnosis = async (patientId, diagnosisData) => {
 };
 
 /**
- * Get all medications from database
+ * Get medications from database (supports search)
+ * @param {Object} params - Query params (q, limit)
  * @returns {Promise<Object>} List of medications
  */
-export const getMedications = async () => {
+export const getMedications = async (params = {}) => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/medications/`);
+    const response = await axios.get(`${API_BASE_URL}/medications/`, { params });
     return {
       success: true,
       data: response.data
@@ -226,6 +227,48 @@ export const getMedications = async () => {
     return {
       success: false,
       error: error.response?.data?.error || 'Failed to fetch medications'
+    };
+  }
+};
+
+/**
+ * Get medication suggestions based on disease label
+ * @param {Object} params - Query params (q, limit)
+ * @returns {Promise<Object>} List of medications
+ */
+export const getMedicationSuggestions = async (params = {}) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/medications/suggest/`, { params });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error fetching medication suggestions:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch medication suggestions'
+    };
+  }
+};
+
+/**
+ * Search ontology concepts (cached via backend)
+ * @param {Object} params - Query params (q, type, ontologies, limit)
+ * @returns {Promise<Object>} List of ontology concepts
+ */
+export const searchOntology = async (params = {}) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/ontology/search/`, { params });
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[DoctorAPI] Error searching ontology:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to search ontology'
     };
   }
 };

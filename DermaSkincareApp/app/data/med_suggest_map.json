@@ -1,0 +1,18 @@
+﻿{
+  "acne": ["tretinoin", "adapalene", "benzoyl", "clindamycin", "doxycycline", "isotretinoin", "azelaic", "salicylic"],
+  "rosacea": ["metronidazole", "ivermectin", "azelaic", "doxycycline", "brimonidine"],
+  "eczema": ["hydrocortisone", "mometasone", "betamethasone", "tacrolimus", "pimecrolimus", "emollient"],
+  "dermatitis": ["hydrocortisone", "mometasone", "betamethasone", "tacrolimus", "emollient"],
+  "psoriasis": ["calcipotriol", "betamethasone", "methotrexate", "acitretin", "salicylic"],
+  "fungal": ["ketoconazole", "clotrimazole", "terbinafine", "itraconazole", "fluconazole"],
+  "tinea": ["terbinafine", "clotrimazole", "ketoconazole", "itraconazole"],
+  "impetigo": ["mupirocin", "fusidic", "cephalexin"],
+  "bacterial": ["mupirocin", "fusidic", "clindamycin", "doxycycline"],
+  "viral": ["acyclovir", "valacyclovir"],
+  "herpes": ["acyclovir", "valacyclovir"],
+  "pruritus": ["cetirizine", "loratadine", "fexofenadine"],
+  "allergy": ["cetirizine", "loratadine", "fexofenadine"],
+  "urticaria": ["cetirizine", "loratadine", "fexofenadine"],
+  "pigmentation": ["hydroquinone", "azelaic", "tretinoin"],
+  "melasma": ["hydroquinone", "azelaic", "tretinoin"]
+}

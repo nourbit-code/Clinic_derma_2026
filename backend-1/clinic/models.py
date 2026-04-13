@@ -181,10 +181,34 @@ class MedicalRecord(models.Model):
     appointment = models.ForeignKey(Appointment, on_delete=models.SET_NULL, null=True, blank=True)
     notes = models.TextField(blank=True)
     diagnosis = models.TextField(blank=True)
+    primary_disease_id = models.CharField(max_length=255, blank=True)
+    primary_disease_label = models.CharField(max_length=255, blank=True)
+    primary_disease_ontology = models.CharField(max_length=50, blank=True)
+    symptom_ids = models.TextField(blank=True)  # JSON list of concept ids
+    symptom_labels = models.TextField(blank=True)  # JSON list of labels
+    location_ids = models.TextField(blank=True)  # JSON list of concept ids
+    location_labels = models.TextField(blank=True)  # JSON list of labels
+    severity = models.CharField(max_length=20, blank=True)  # mild/moderate/severe
     date = models.DateField(auto_now_add=True)
 
     def __str__(self):
         return f"Record {self.record_id} - {self.patient.name}"
+
+
+# -------------------------
+# Ontology Concepts (Cached)
+# -------------------------
+class MedicalConcept(models.Model):
+    concept_id = models.CharField(max_length=255, unique=True)
+    name = models.CharField(max_length=255)
+    concept_type = models.CharField(max_length=50, db_index=True)  # disease/symptom/body_part
+    ontology = models.CharField(max_length=50, db_index=True)
+    code = models.CharField(max_length=100, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.ontology})"
 
 
 # -------------------------
@@ -197,6 +221,8 @@ class Medication(models.Model):
     form = models.CharField(max_length=100, blank=True)  # e.g., tablet, cream
     strength = models.CharField(max_length=100, blank=True)
     manufacturer = models.CharField(max_length=200, blank=True)
+    category = models.CharField(max_length=200, blank=True)
+    region = models.CharField(max_length=100, blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2, default=0.0)
 
     def __str__(self):

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import * as ImagePicker from "expo-image-picker";
 import {
   Modal,
@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import PrescriptionTable from "@/components/PrescriptionTable";
+import { useAuth } from "./context/AuthContext";
 import {
   ChevronDown,
   ChevronUp,
@@ -29,7 +30,6 @@ import {
 type Prescription = {
   medication: string;
   dose: string;
-  frequency: string;
   duration: string;
   notes: string;
 };
@@ -64,6 +64,12 @@ type GalleryItem = {
 // ---------------------
 export default function DoctorPatientPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const doctorDisplayName = useMemo(() => {
+    const name = user?.name?.trim();
+    if (!name) return "Dr. Emily Carter";
+    return name.toLowerCase().startsWith("dr") ? name : `Dr. ${name}`;
+  }, [user?.name]);
   const [expanded, setExpanded] = useState<number | null>(null);
   const [galleryImages, setGalleryImages] = useState<GalleryItem[]>([
     { id: 1, date: "October 26, 2023", label: "Face Acne", images: [] },
@@ -99,21 +105,18 @@ export default function DoctorPatientPage() {
         {
           medication: "Tretinoin Cream 0.025%",
           dose: "Nightly",
-          frequency: "1×/day",
           duration: "6 weeks",
           notes: "Apply thin layer before bed",
         },
         {
           medication: "SPF 30 Sunscreen",
           dose: "Topical",
-          frequency: "Morning",
           duration: "Daily",
           notes: "Avoid sun exposure post-laser",
         },
         {
           medication: "Clindamycin Gel 1%",
           dose: "Topical",
-          frequency: "Twice/day",
           duration: "2 weeks",
           notes: "Apply only to affected area",
         },
@@ -136,14 +139,12 @@ export default function DoctorPatientPage() {
         {
           medication: "Cerave Moisturizer",
           dose: "Topical",
-          frequency: "Twice/day",
           duration: "2 months",
           notes: "Use after cleansing",
         },
         {
           medication: "Broad Spectrum SPF 50",
           dose: "Topical",
-          frequency: "Morning",
           duration: "Daily",
           notes: "Reapply every 4 hours outdoors",
         },
@@ -272,7 +273,7 @@ export default function DoctorPatientPage() {
               <Text style={styles.subTitle}>Prescriptions</Text>
               <PrescriptionTable
                 prescriptions={v.prescriptions}
-                doctorName="Dr. Emily Carter"
+                doctorName={doctorDisplayName}
                 clinicName="Derma Skincare Clinic"
                 patient={{ name: patient.name, age: patient.age, gender: patient.gender, id: patient.id }}
               />

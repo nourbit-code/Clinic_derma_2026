@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -23,18 +23,21 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { Swipeable } from "react-native-gesture-handler";
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import html2canvas from "html2canvas";
 
 // --- AUTH CONTEXT ---
 import { useAuth } from '../../context/AuthContext';
 
 // --- API ---
-import { getPatientDetails, saveDiagnosis } from '../../../src/api/doctorApi';
+import { getPatientDetails, getMedications, getMedicationSuggestions, saveDiagnosis, searchOntology } from '../../../src/api/doctorApi';
 import { getInventory, consumeStock } from '../../../src/api/inventoryApi';
 
 // --- EXTERNAL COMPONENTS (AS PER YOUR IMPORTS) ---
 import PatientInfoBar, { ServiceKey } from '../../../components/PatientInfoBar';
 import ReusablePhotoUploader from '../../../components/ReusablePhotoUploader';
 import ServiceTabs from '../../../components/ServiceTabs';
+import PrescriptionTable from "../../../components/PrescriptionTable";
+import medSuggestMap from "../../data/med_suggest_map.json";
 
 
 // ------------------- 1. DESIGN SYSTEM -------------------
@@ -71,14 +74,7 @@ const DEFAULT_DIAGNOSIS_TEMPLATES = [
 const storageKeyForPatient = (patientId: string) => `patient_${patientId}_v6_data`;
 const storageKeyForTemplates = "custom_diagnosis_templates_v1";
 
-const dummyMedications = [
-  { id: 1, name: "Panadol (Paracetamol)", dose: "500mg", duration: "5 days", notes: "" },
-  { id: 2, name: "Augmentin", dose: "1g", duration: "7 days", notes: "" },
-  { id: 3, name: "Fucidin Cream", dose: "2%", duration: "3 days", notes: "" },
-  { id: 4, name: "Brufen", dose: "400mg", duration: "As needed", notes: "" },
-  { id: 5, name: "Zyrtec", dose: "10mg", duration: "7 days", notes: "" },
-  { id: 6, name: "Roaccutane", dose: "20mg", duration: "30 days", notes: "" },
-];
+const MIN_MED_SEARCH_CHARS = 2;
 
 interface PatientData {
   id: string;
@@ -118,11 +114,19 @@ const SectionHeader = ({ icon, title, action, color = THEME.primary }: any) => (
 // ------------------- 3. CORE COMPONENTS (Defined before use) -------------------
 
 // --- MEDICATION SELECTOR ---
-const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any) => {
-  const [searchText, setSearchText] = useState("");
-  const filteredMeds = medications.filter((med: any) =>
-    med.name.toLowerCase().includes(searchText.toLowerCase())
-  );
+const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds, searchValue, onSearch, loading, error }: any) => {
+  const [searchText, setSearchText] = useState(searchValue || "");
+  const [medCategory, setMedCategory] = useState<string>("All");
+  const [medSort, setMedSort] = useState<"AZ" | "ZA">("AZ");
+
+  useEffect(() => {
+    setSearchText(searchValue || "");
+  }, [searchValue]);
+
+  const handleSearchChange = (text: string) => {
+    setSearchText(text);
+    onSearch?.(text);
+  };
 
   const toggleMed = (med: any) => {
     if (selectedMeds.find((m: any) => m.id === med.id)) {
@@ -132,9 +136,71 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
     }
   };
 
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    (medications || []).forEach((m: any) => {
+      const raw = m?.category || m?.category_name || m?.group || m?.type;
+      const name = (raw || "Other").toString().trim();
+      if (name) set.add(name);
+    });
+    return ["All", ...Array.from(set).sort((a, b) => a.localeCompare(b))];
+  }, [medications]);
+
+  const displayedMeds = useMemo(() => {
+    let list = medications || [];
+    if (medCategory !== "All") {
+      list = list.filter((m: any) => {
+        const raw = m?.category || m?.category_name || m?.group || m?.type || "Other";
+        return raw?.toString?.().trim() === medCategory;
+      });
+    }
+    list = [...list].sort((a: any, b: any) => {
+      const aName = (a?.name || "").toString().toLowerCase();
+      const bName = (b?.name || "").toString().toLowerCase();
+      return medSort === "AZ" ? aName.localeCompare(bName) : bName.localeCompare(aName);
+    });
+    return list;
+  }, [medCategory, medSort, medications]);
+
   return (
     <View style={styles.card}>
       <SectionHeader icon="search" title="Medication Database" />
+      <View style={styles.medTopRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.medCategoryRow}
+          contentContainerStyle={styles.medCategoryRowContent}
+        >
+          {categories.map((cat) => (
+            <TouchableOpacity
+              key={cat}
+              onPress={() => setMedCategory(cat)}
+              style={[styles.medCategoryChip, medCategory === cat && styles.medCategoryChipActive]}
+            >
+              <Text style={[styles.medCategoryText, medCategory === cat && styles.medCategoryTextActive]}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <View style={styles.medSortRow}>
+          <TouchableOpacity
+            onPress={() => setMedSort("AZ")}
+            style={[styles.medSortChip, medSort === "AZ" && styles.medSortChipActive]}
+          >
+            <Ionicons name="arrow-down" size={12} color={medSort === "AZ" ? THEME.white : THEME.text} />
+            <Text style={[styles.medSortText, medSort === "AZ" && styles.medSortTextActive]}>A-Z</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setMedSort("ZA")}
+            style={[styles.medSortChip, medSort === "ZA" && styles.medSortChipActive]}
+          >
+            <Ionicons name="arrow-up" size={12} color={medSort === "ZA" ? THEME.white : THEME.text} />
+            <Text style={[styles.medSortText, medSort === "ZA" && styles.medSortTextActive]}>Z-A</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
       <View style={styles.searchContainer}>
         <Ionicons name="search" size={18} color={THEME.textLight} style={{marginRight: 8}} />
         <TextInput
@@ -142,11 +208,18 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
           placeholder="Search meds (e.g. Panadol)..."
           placeholderTextColor={THEME.textLight}
           value={searchText}
-          onChangeText={setSearchText}
+          onChangeText={handleSearchChange}
         />
       </View>
+      {loading && (
+        <View style={styles.searchLoadingRow}>
+          <ActivityIndicator size="small" color={THEME.primary} />
+          <Text style={styles.searchLoadingText}>Searching...</Text>
+        </View>
+      )}
+      {!!error && !loading && <Text style={styles.searchErrorText}>{error}</Text>}
       <ScrollView style={styles.medList} nestedScrollEnabled={true}>
-        {filteredMeds.map((med: any) => {
+        {displayedMeds.map((med: any) => {
           const isSelected = selectedMeds.find((m: any) => m.id === med.id);
           return (
             <TouchableOpacity
@@ -162,6 +235,13 @@ const MedicationSelector = ({ medications, selectedMeds, setSelectedMeds }: any)
             </TouchableOpacity>
           );
         })}
+        {!loading && medications.length === 0 && (
+          <Text style={styles.emptyText}>
+            {searchText.length < MIN_MED_SEARCH_CHARS
+              ? `Type at least ${MIN_MED_SEARCH_CHARS} characters to search`
+              : "No medications found."}
+          </Text>
+        )}
       </ScrollView>
     </View>
   );
@@ -210,9 +290,20 @@ const CustomMedicationAdder = ({ setSelectedMeds }: any) => {
 };
 
 // --- PRESCRIPTION TABLE (MODIFIED FOR PRESCRIPTION-ONLY PDF) ---
-const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, diagnosis, rxNotes }: any) => {
+const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, doctorName, clinicName }: any) => {
   const [expandedMap, setExpandedMap] = useState<Record<number, boolean>>({});
   const [exporting, setExporting] = useState(false);
+  const printCardRef = useRef<HTMLDivElement>(null);
+  const prescriptionIdRef = useRef("RX-" + Math.floor(100000 + Math.random() * 900000));
+
+  const printablePrescriptions = useMemo(() => {
+    return selectedMeds.map((med: any) => ({
+      medication: med.name || "",
+      dose: med.dose || "",
+      duration: med.duration || "",
+      notes: med.notes || "",
+    }));
+  }, [selectedMeds]);
 
   const toggleExpand = (id: number) => setExpandedMap((s) => ({ ...s, [id]: !s[id] }));
   const removeMed = (id: number) => setSelectedMeds((s: any[]) => s.filter((x) => x.id !== id));
@@ -221,51 +312,82 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, dia
     setSelectedMeds((s: any[]) => s.map((m) => (m.id === id ? { ...m, [key]: value } : m)));
   };
 
-  // PDF EXPORT - ONLY PRESCRIPTION CONTENT
+  // Export prescription (web uses the same card as Patient Visit History)
   const exportToPDF = async () => {
     setExporting(true);
 
-    const rowsHtml = selectedMeds.map((m: any) => `
-      <tr style="border-bottom: 1px solid #eee;">
-        <td style="padding:10px;"><strong>${m.name}</strong></td>
-        <td style="padding:10px;">${m.dose || '-'}</td>
-        <td style="padding:10px;">${m.duration || '-'}</td>
-        <td style="padding:10px; color:#666; font-style:italic;">${m.notes || ""}</td>
-      </tr>`).join("");
-
-    const html = `
-      <html>
-      <body style="font-family: Helvetica, Arial, sans-serif; padding: 40px; color: #1e293b;">
-        <div style="border-bottom: 2px solid #be185d; padding-bottom: 20px; margin-bottom: 20px; display:flex; justify-content:space-between;">
-          <div>
-            <h1 style="color: #be185d; margin:0;">Prescription Report</h1>
-            <p style="margin:5px 0; color:#64748b;">Dr. Dermatology Clinic</p>
-          </div>
-          <div style="text-align:right;">
-            <p><strong>Patient:</strong> ${patient.name}</p>
-            <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-EG')}</p>
-          </div>
-        </div>
-        
-        <div style="background:#f8fafc; padding:15px; border-left:4px solid #0284c7; border-radius:4px; margin-bottom:20px;">
-            <h4 style="margin:0 0 10px 0; color:#0284c7;">Clinical Diagnosis</h4>
-            <p style="margin:0; font-weight:bold;">${diagnosis || 'No formal diagnosis recorded.'}</p>
-        </div>
-
-        ${rxNotes ? `<div style="background:#f8fafc; padding:15px; border-left:4px solid #be185d; border-radius:4px; margin-bottom:20px;"><strong>General Instructions:</strong><br/>${rxNotes}</div>` : ''}
-
-        <h3>Prescription Details</h3>
-        <table style="width:100%; border-collapse: collapse; margin-bottom:20px;">
-          <thead style="background:#fce7f3; color:#831843;"><tr><th style="padding:10px; text-align:left;">Drug</th><th style="padding:10px; text-align:left;">Dose</th><th style="padding:10px; text-align:left;">Duration</th><th style="padding:10px; text-align:left;">Note</th></tr></thead>
-          <tbody>${rowsHtml || '<tr><td colspan="4" style="padding:10px; color:#94a3b8; font-style:italic;">No medications prescribed.</td></tr>'}</tbody>
-        </table>
-        
-        <p style="text-align:center; margin-top:40px; font-size:12px; color:#94a3b8;">End of Prescription Report.</p>
-      </body>
-      </html>
-    `;
-
     try {
+      if (Platform.OS === "web") {
+        if (!printCardRef.current) {
+          Alert.alert("Error", "Prescription view is not ready yet.");
+          return;
+        }
+        const canvas = await html2canvas(printCardRef.current);
+        const image = canvas.toDataURL("image/jpeg", 1.0);
+        const link = document.createElement("a");
+        link.href = image;
+        link.download = `prescription-${prescriptionIdRef.current}.jpg`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+
+      const rowsHtml = printablePrescriptions.map((m: any) => `
+        <tr style="border-bottom: 1px solid #eee;">
+          <td style="padding:8px;">${m.medication || "-"}</td>
+          <td style="padding:8px; text-align:center;">${m.dose || "-"}</td>
+          <td style="padding:8px; text-align:center;">${m.duration || "-"}</td>
+          <td style="padding:8px;">${m.notes || ""}</td>
+        </tr>`).join("");
+
+      const html = `
+        <html>
+        <body style="font-family: Helvetica, Arial, sans-serif; padding: 32px; color: #1e293b;">
+          <div style="border:1px solid #ddd; border-radius:12px; padding:16px; position:relative;">
+            <div style="display:flex; justify-content:space-between; border-bottom:1px solid #ccc; padding-bottom:6px; margin-bottom:12px;">
+              <div>
+                <div style="font-size:17px; font-weight:700; color:#9B084D;">${clinicName}</div>
+                <div style="font-size:14px; color:#444;">${doctorName}</div>
+              </div>
+              <div style="text-align:right; font-size:12px; color:#666;">
+                <div style="font-weight:700; color:#9B084D;">#${prescriptionIdRef.current}</div>
+                <div>Date: ${new Date().toLocaleDateString()}</div>
+              </div>
+            </div>
+
+            <div style="margin-bottom:10px; border-bottom:1px solid #eee; padding-bottom:8px;">
+              <div><strong>Name:</strong> ${patient?.name || "-"}</div>
+              <div><strong>Age:</strong> ${patient?.age || "-"}</div>
+              <div><strong>Gender:</strong> ${patient?.gender || "-"}</div>
+              <div><strong>Patient ID:</strong> ${patient?.id || "-"}</div>
+            </div>
+
+            <div style="position:absolute; top:40%; left:10%; font-size:40px; color:#9B084D20; transform:rotate(-20deg); z-index:-1;">
+              ${clinicName}
+            </div>
+
+            <table style="width:100%; border-collapse:collapse; border:1px solid #ddd; border-radius:8px; overflow:hidden;">
+              <thead style="background:#9B084D; color:#fff;">
+                <tr>
+                  <th style="padding:8px; text-align:center;">Medication</th>
+                  <th style="padding:8px; text-align:center;">Dose</th>
+                  <th style="padding:8px; text-align:center;">Duration</th>
+                  <th style="padding:8px; text-align:center;">Notes</th>
+                </tr>
+              </thead>
+              <tbody>${rowsHtml || '<tr><td colspan="4" style="padding:8px; color:#94a3b8; font-style:italic;">No medications prescribed.</td></tr>'}</tbody>
+            </table>
+
+            <div style="margin-top:14px;">
+              <div>Doctor's Signature: ${doctorName}</div>
+              <div style="font-size:12px; color:#666; text-align:center; margin-top:8px;">Thank you for visiting ${clinicName}</div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
       const { uri } = await Print.printToFileAsync({ html });
       await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: 'Share Prescription Report' });
     } catch (err) { 
@@ -348,6 +470,25 @@ const PrescriptionTableAdvanced = ({ selectedMeds, setSelectedMeds, patient, dia
           </View>
         </Swipeable>
       ))}
+
+      {Platform.OS === "web" && patient && (
+        <View style={styles.printOnlyWrapper} pointerEvents="none">
+          <PrescriptionTable
+            prescriptions={printablePrescriptions}
+            doctorName={doctorName || "Dr. Emily Carter"}
+            clinicName={clinicName || "Derma Clinic"}
+            patient={{
+              name: patient.name,
+              age: patient.age,
+              gender: patient.gender,
+              id: patient.id,
+            }}
+            prescriptionId={prescriptionIdRef.current}
+            showDownloadButton={false}
+            cardRef={printCardRef}
+          />
+        </View>
+      )}
     </View>
   );
 };
@@ -421,12 +562,22 @@ const DiagnosisPage = () => {
   
   // Get logged-in doctor from auth context
   const { user, isLoading: authLoading } = useAuth();
+  const doctorDisplayName = useMemo(() => {
+    const name = user?.name?.trim();
+    if (!name) return "Dr. Emily Carter";
+    return name.toLowerCase().startsWith("dr") ? name : `Dr. ${name}`;
+  }, [user?.name]);
+  const clinicDisplayName = "Derma Clinic";
   
   const [activeService, setActiveService] = useState<ServiceKey>('DIAGNOSIS');
   const [diagnosis, setDiagnosis] = useState("");
   const [diagnosisSearch, setDiagnosisSearch] = useState("");
   const [rxNotes, setRxNotes] = useState(""); 
   const [selectedMeds, setSelectedMeds] = useState<any[]>([]);
+  const [medSearchQuery, setMedSearchQuery] = useState("");
+  const [medResults, setMedResults] = useState<any[]>([]);
+  const [medLoading, setMedLoading] = useState(false);
+  const [medError, setMedError] = useState<string | null>(null);
   // ⭐️ UPDATED: Retaining the PhotoItem type for photos state
   const [photos, setPhotos] = useState<PhotoItem[]>([]); 
   const [labs, setLabs] = useState<any[]>([]); 
@@ -471,38 +622,144 @@ const DiagnosisPage = () => {
   const [selectedDisease, setSelectedDisease] = useState<{
     id: string;
     label: string;
+    ontology?: string;
+    code?: string;
   } | null>(null);
+  const [severity, setSeverity] = useState<"Mild" | "Moderate" | "Severe" | "">("");
+  const [suggestedMeds, setSuggestedMeds] = useState<any[]>([]);
+  const [suggestLoading, setSuggestLoading] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
+  const suggestionCacheRef = useRef<Map<string, any[]>>(new Map());
   const [doLoading, setDoLoading] = useState(false);
+  const [doError, setDoError] = useState<string | null>(null);
 
   // --- Disease Ontology Search function ---
   const searchDiseaseOntology = async (text?: string) => {
     const query = text ?? "";
     setDoQuery(query);
 
-    if (query.length < 3) {
+    if (query.length < 2) {
       setDoResults([]);
+      setDoError(null);
       return;
     }
 
     try {
       setDoLoading(true);
-      const res = await fetch(
-        `https://www.disease-ontology.org/api/search?q=${encodeURIComponent(query)}`
-      );
-      const data = await res.json();
+      setDoError(null);
+      const result = await searchOntology({
+        q: query,
+        type: "disease",
+        ontologies: "SNOMEDCT,ICD10CM,DOID",
+        limit: 20,
+      });
 
-      setDoResults(
-        (data?.response?.docs || []).map((d: any) => ({
-          id: d.id,
-          label: d.label,
-        }))
-      );
+      if (result.success && Array.isArray(result.data)) {
+        setDoResults(
+          result.data.map((d: any) => ({
+            id: d.id,
+            label: d.name,
+            ontology: d.ontology,
+            code: d.code,
+          }))
+        );
+      } else {
+        setDoResults([]);
+        setDoError(result.error || "Failed to fetch diseases");
+      }
     } catch (err) {
-      console.error("Disease Ontology search failed", err);
+      console.error("Ontology search failed", err);
+      setDoError("Failed to fetch diseases");
     } finally {
       setDoLoading(false);
     }
   };
+
+  useEffect(() => {
+    let isActive = true;
+    const fetchSuggestions = async () => {
+      const rawLabel = selectedDisease?.label || diagnosis;
+      // Always reset suggestions when diagnosis changes
+      setSuggestedMeds([]);
+      setSuggestError(null);
+      if (!rawLabel || !rawLabel.trim()) {
+        return;
+      }
+      setSuggestLoading(true);
+      setSuggestError(null);
+
+      const label = rawLabel.toLowerCase();
+      const baseTerm = label.split(/[\\s,()]+/)[0]?.trim() || label;
+      const termMap: Record<string, string[]> = (medSuggestMap as any) || {};
+
+      const extraTerms = termMap[baseTerm] || [];
+      const terms = Array.from(new Set([baseTerm, ...extraTerms].filter(Boolean)));
+
+      // Cache: if we already have suggestions for this base term, return fast
+      const cached = suggestionCacheRef.current.get(baseTerm);
+      if (cached && cached.length > 0) {
+        setSuggestedMeds(cached.slice(0, 10));
+        setSuggestLoading(false);
+        return;
+      }
+
+      try {
+        const results = await Promise.all(
+          terms.map((term) => getMedicationSuggestions({ q: term, limit: 8 }))
+        );
+
+        if (!isActive) return;
+        const collected: any[] = [];
+        results.forEach((res) => {
+          if (res.success) {
+            const data = Array.isArray(res.data) ? res.data : (res.data?.results || []);
+            data.forEach((m: any) => collected.push(m));
+          }
+        });
+
+        const seen = new Set<string>();
+        const normalized = collected
+          .map((m: any) => ({
+            id: m.med_id ?? m.id,
+            name: m.name || "",
+            dose: m.strength || "",
+            duration: "",
+            notes: "",
+          }))
+          .filter((m: any) => {
+            const key = `${m.id || ""}::${(m.name || "").toLowerCase()}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return m.name;
+          });
+
+        // Basic ranking: prioritize meds that include any mapped term in their name
+        const rankTerms = new Set(extraTerms.map((t) => t.toLowerCase()));
+        const ranked = normalized.sort((a: any, b: any) => {
+          const aHit = [...rankTerms].some((t) => a.name.toLowerCase().includes(t)) ? 1 : 0;
+          const bHit = [...rankTerms].some((t) => b.name.toLowerCase().includes(t)) ? 1 : 0;
+          return bHit - aHit;
+        });
+
+        const top = ranked.slice(0, 10);
+        suggestionCacheRef.current.set(baseTerm, top);
+        setSuggestedMeds(top);
+        if (normalized.length === 0) {
+          setSuggestError("No suggestions found for this disease.");
+        }
+      } catch (err) {
+        if (!isActive) return;
+        console.error("Suggestion fetch failed", err);
+        setSuggestedMeds([]);
+        setSuggestError("Failed to fetch suggestions");
+      } finally {
+        setSuggestLoading(false);
+      }
+    };
+
+    fetchSuggestions();
+    return () => { isActive = false; };
+  }, [selectedDisease?.label, diagnosis]);
 
   // --- Load Patient Data from Backend ---
   const loadPatientData = useCallback(async () => {
@@ -561,6 +818,45 @@ const DiagnosisPage = () => {
     }
   }, [patientId]);
 
+  // --- Medication Search (API) ---
+  useEffect(() => {
+    let isActive = true;
+    const timer = setTimeout(async () => {
+      const query = medSearchQuery.trim();
+      if (query.length > 0 && query.length < MIN_MED_SEARCH_CHARS) {
+        setMedResults([]);
+        setMedError(null);
+        return;
+      }
+
+      setMedLoading(true);
+      setMedError(null);
+      const result = await getMedications({ q: query || undefined, limit: 30 });
+      if (!isActive) return;
+      if (result.success) {
+        const data = Array.isArray(result.data) ? result.data : (result.data?.results || []);
+        setMedResults(
+          data.map((m: any) => ({
+            id: m.med_id ?? m.id,
+            name: m.name || "",
+            dose: m.strength || "",
+            duration: "",
+            notes: "",
+          }))
+        );
+      } else {
+        setMedResults([]);
+        setMedError(result.error || "Failed to fetch medications");
+      }
+      setMedLoading(false);
+    }, 300);
+
+    return () => {
+      isActive = false;
+      clearTimeout(timer);
+    };
+  }, [medSearchQuery]);
+
   useEffect(() => {
     if (!authLoading && patientId) {
       loadPatientData();
@@ -594,6 +890,7 @@ const DiagnosisPage = () => {
     setDiagnosisSearch("");
     setRxNotes("");
     setSelectedMeds([]);
+    setSeverity("");
     setPhotos([]);
     setLabs([]);
     setSelectedDisease(null);
@@ -621,7 +918,8 @@ const DiagnosisPage = () => {
       return;
     }
     
-    if (selectedMeds.length === 0) {
+    const medsToSave = selectedMeds.filter((m) => (m.name || "").trim());
+    if (medsToSave.length === 0) {
       Alert.alert("Missing Information", "Please add at least one medication to the prescription before saving.");
       return;
     }
@@ -658,7 +956,11 @@ const DiagnosisPage = () => {
         doctor_id: user.id,
         diagnosis: diagnosis,
         notes: rxNotes,
-        medications: selectedMeds.map(med => ({
+        primary_disease_id: selectedDisease?.id || "",
+        primary_disease_label: selectedDisease?.label || "",
+        primary_disease_ontology: selectedDisease?.ontology || "",
+        severity: severity,
+        medications: medsToSave.map(med => ({
           name: med.name,
           dose: med.dose,
           duration: med.duration,
@@ -965,109 +1267,70 @@ const DiagnosisPage = () => {
           <View style={styles.card}>
             <View style={styles.headerRow}>
                 <SectionHeader icon="medical" title="Clinical Diagnosis" />
-                {/* ===== Standard Disease (Ontology) Search ===== */}
-<View style={{ marginBottom: 12 }}>
-  <View style={styles.searchContainer}>
-    <Ionicons
-      name="search"
-      size={18}
-      color={THEME.textLight}
-      style={{ marginRight: 8 }}
-    />
-    <TextInput
-      style={styles.searchInput}
-      placeholder="Search standardized disease (optional)"
-      placeholderTextColor={THEME.textLight}
-      value={doQuery}
-      onChangeText={searchDiseaseOntology}
-    />
-    {doLoading && <ActivityIndicator size="small" color={THEME.primary} />}
-  </View>
-
-  {/* Results Dropdown */}
-  {doResults.length > 0 && (
-    <View
-      style={{
-        borderWidth: 1,
-        borderColor: THEME.border,
-        borderRadius: THEME.radius,
-        marginTop: 6,
-        backgroundColor: THEME.white,
-        maxHeight: 180,
-      }}
-    >
-      <ScrollView nestedScrollEnabled>
-        {doResults.map((d) => (
-          <TouchableOpacity
-            key={d.id}
-            style={{
-              padding: 10,
-              borderBottomWidth: 1,
-              borderBottomColor: THEME.border,
-            }}
-            onPress={() => {
-              setSelectedDisease(d);
-              setDiagnosis((prev) =>
-                prev ? `${prev}, ${d.label}` : d.label
-              );
-              setDoResults([]);
-              setDoQuery("");
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: THEME.secondary }}>
-              {d.label}
-            </Text>
-            <Text style={{ fontSize: 11, color: THEME.textLight }}>
-              {d.id}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
-  )}
-
-  {/* Selected Disease Badge */}
-  {selectedDisease && (
-    <View
-      style={{
-        marginTop: 8,
-        padding: 8,
-        borderRadius: THEME.radius,
-        backgroundColor: THEME.primaryLight,
-        borderLeftWidth: 4,
-        borderLeftColor: THEME.primary,
-      }}
-    >
-      <Text style={{ fontWeight: "700", color: THEME.secondary }}>
-        🧬 {selectedDisease.label}
-      </Text>
-      <Text style={{ fontSize: 12, color: THEME.textLight }}>
-        {selectedDisease.id}
-      </Text>
-    </View>
-  )}
-</View>
-
                 <TouchableOpacity style={styles.manageBtn} onPress={() => setTemplateModalVisible(true)}>
                   <Ionicons name="options-outline" size={14} color={THEME.primary} />
                   <Text style={styles.manageBtnText}>Manage Templates</Text>
                 </TouchableOpacity>
             </View>
             
-            {/* Search Bar for Templates */}
-            <View style={[styles.searchContainer, {marginBottom: 10, marginTop: 0}]}>
+            {/* Ontology Search (Moved Here) */}
+            <View style={[styles.searchContainer, styles.clinicalSearch]}>
               <Ionicons name="search" size={18} color={THEME.textLight} style={{marginRight: 8}} />
               <TextInput
                 style={styles.searchInput}
-                placeholder="Search or filter templates..."
+                placeholder="Search standardized disease (optional)"
                 placeholderTextColor={THEME.textLight}
-                value={diagnosisSearch}
-                onChangeText={setDiagnosisSearch}
+                value={doQuery}
+                onChangeText={searchDiseaseOntology}
               />
+              {doLoading && <ActivityIndicator size="small" color={THEME.primary} />}
             </View>
-            
+            {!!doError && !doLoading && <Text style={styles.searchErrorText}>{doError}</Text>}
+
+            {doResults.length > 0 && (
+              <View style={styles.dropdown}>
+                <ScrollView nestedScrollEnabled>
+                  {doResults.map((d) => (
+                    <TouchableOpacity
+                      key={d.id}
+                      style={styles.dropdownRow}
+                      onPress={() => {
+                        setSelectedDisease(d);
+                        setDiagnosis((prev) =>
+                          prev ? `${prev}, ${d.label}` : d.label
+                        );
+                        setDoResults([]);
+                        setDoQuery("");
+                      }}
+                    >
+                      <Text style={styles.dropdownTitle}>{d.label}</Text>
+                      <Text style={styles.dropdownSub}>
+                        {d.ontology ? `${d.ontology} • ` : ""}{d.code || d.id}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {selectedDisease && (
+              <View style={styles.selectedDiseaseCard}>
+                <Text style={{ fontWeight: "700", color: THEME.secondary }}>
+                  🧬 {selectedDisease.label}
+                </Text>
+                <Text style={{ fontSize: 12, color: THEME.textLight }}>
+                  {selectedDisease.ontology ? `${selectedDisease.ontology} • ` : ""}{selectedDisease.code || selectedDisease.id}
+                </Text>
+              </View>
+            )}
+
             {/* Filtered Templates */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.templateRow}
+              contentContainerStyle={styles.templateRowContent}
+            >
               {filteredTemplates.length > 0 ? filteredTemplates.map(t => (
                   <TouchableOpacity key={t} style={styles.templateChip} onPress={() => handleTemplateSelection(t)}>
                     <Text style={styles.templateChipText}>+ {t}</Text>
@@ -1085,6 +1348,75 @@ const DiagnosisPage = () => {
             />
           </View>
 
+          {/* Severity */}
+          <View style={styles.card}>
+            <SectionHeader icon="alert-circle" title="Severity" />
+            <View style={styles.severityRow}>
+              {["Mild", "Moderate", "Severe"].map((level) => (
+                <TouchableOpacity
+                  key={level}
+                  style={[styles.severityChip, severity === level && styles.severityChipActive]}
+                  onPress={() => setSeverity(level as any)}
+                >
+                  <Text style={[styles.severityText, severity === level && styles.severityTextActive]}>
+                    {level}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {severity && (
+                <TouchableOpacity
+                  style={styles.severityClear}
+                  onPress={() => setSeverity("")}
+                >
+                  <Text style={styles.severityClearText}>Clear</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+
+          {/* Suggested Medications */}
+          <View style={styles.card}>
+            <SectionHeader
+              icon="bulb"
+              title="Suggested Medications"
+              action={
+                suggestedMeds.length > 0 ? (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{suggestedMeds.length}</Text>
+                  </View>
+                ) : null
+              }
+            />
+            {suggestLoading && (
+              <View style={styles.searchLoadingRow}>
+                <ActivityIndicator size="small" color={THEME.primary} />
+                <Text style={styles.searchLoadingText}>Loading suggestions...</Text>
+              </View>
+            )}
+            {!!suggestError && !suggestLoading && <Text style={styles.searchErrorText}>{suggestError}</Text>}
+            {!suggestLoading && suggestedMeds.length === 0 && (
+              <Text style={styles.emptyText}>No suggestions yet. Select a disease or type a diagnosis.</Text>
+            )}
+            {suggestedMeds.length > 0 && (
+              <View style={styles.chipRow}>
+                {suggestedMeds.map((m: any) => (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={styles.chip}
+                    onPress={() => {
+                      if (!selectedMeds.find((x: any) => x.id === m.id)) {
+                        setSelectedMeds((prev: any[]) => [...prev, { ...m, notes: m.notes || "" }]);
+                      }
+                    }}
+                  >
+                    <Text style={styles.chipText}>{m.name}</Text>
+                    <Ionicons name="add-circle-outline" size={14} color={THEME.primary} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
           {/* Prescription Notes */}
           <View style={styles.card}>
               <SectionHeader icon="create" title="Prescription / General Instructions" />
@@ -1099,9 +1431,13 @@ const DiagnosisPage = () => {
 
           {/* Meds Search */}
           <MedicationSelector 
-              medications={dummyMedications} 
+              medications={medResults} 
               selectedMeds={selectedMeds} 
               setSelectedMeds={setSelectedMeds} 
+              searchValue={medSearchQuery}
+              onSearch={setMedSearchQuery}
+              loading={medLoading}
+              error={medError}
           />
           
           {/* Custom Med Adder */}
@@ -1111,8 +1447,8 @@ const DiagnosisPage = () => {
               selectedMeds={selectedMeds}
               setSelectedMeds={setSelectedMeds}
               patient={patient}
-              diagnosis={diagnosis} // Pass diagnosis for PDF
-              rxNotes={rxNotes}
+              doctorName={doctorDisplayName}
+              clinicName={clinicDisplayName}
           />
           
           {/* Save Button */}
@@ -1656,6 +1992,11 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     ...THEME.shadow,
   },
+  printOnlyWrapper: {
+    position: "absolute",
+    left: -20000,
+    top: -20000,
+  },
 
   // Section Header Styles
   sectionHeader: {
@@ -1721,11 +2062,76 @@ const styles = StyleSheet.create({
     height: 40,
     marginTop: 12,
   },
+  clinicalSearch: {
+    marginTop: 6,
+    marginBottom: 8,
+  },
   searchInput: {
     flex: 1,
     height: '100%',
     fontSize: 14,
     color: THEME.text,
+  },
+  medTopRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 2,
+    marginBottom: 8,
+  },
+  medCategoryRow: {
+    flex: 1,
+  },
+  medCategoryRowContent: {
+    paddingRight: 6,
+  },
+  medCategoryChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+    marginRight: 8,
+  },
+  medCategoryChipActive: {
+    borderColor: THEME.primary,
+    backgroundColor: THEME.primaryLight,
+  },
+  medCategoryText: {
+    fontSize: 12,
+    color: THEME.text,
+    fontWeight: "600",
+  },
+  medCategoryTextActive: {
+    color: THEME.primary,
+  },
+  medSortRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  medSortChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+  },
+  medSortChipActive: {
+    borderColor: THEME.primary,
+    backgroundColor: THEME.primary,
+  },
+  medSortText: {
+    fontSize: 12,
+    color: THEME.text,
+    fontWeight: "600",
+  },
+  medSortTextActive: {
+    color: THEME.white,
   },
 
   // Template Chip Styles
@@ -1750,6 +2156,21 @@ const styles = StyleSheet.create({
     borderColor: THEME.border,
     borderRadius: THEME.radius,
     backgroundColor: THEME.white,
+  },
+  searchLoadingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  searchLoadingText: {
+    fontSize: 12,
+    color: THEME.textLight,
+  },
+  searchErrorText: {
+    fontSize: 12,
+    color: THEME.danger,
+    marginTop: 6,
   },
   medItem: {
     flexDirection: 'row',
@@ -1777,6 +2198,117 @@ const styles = StyleSheet.create({
   },
   medDoseSelected: {
     color: THEME.text,
+  },
+  dropdown: {
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: THEME.radius,
+    marginTop: 6,
+    backgroundColor: THEME.white,
+    maxHeight: 180,
+  },
+  dropdownRow: {
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: THEME.border,
+  },
+  dropdownTitle: {
+    fontWeight: "700",
+    color: THEME.secondary,
+  },
+  dropdownSub: {
+    fontSize: 11,
+    color: THEME.textLight,
+  },
+  selectedDiseaseCard: {
+    marginTop: 6,
+    marginBottom: 8,
+    padding: 10,
+    borderRadius: THEME.radius,
+    backgroundColor: THEME.primaryLight,
+    borderLeftWidth: 4,
+    borderLeftColor: THEME.primary,
+  },
+  templateRow: {
+    marginTop: 4,
+    marginBottom: 10,
+  },
+  templateRowContent: {
+    paddingRight: 4,
+  },
+  chipRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 10,
+  },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: THEME.primaryLight,
+    borderWidth: 1,
+    borderColor: THEME.primary,
+  },
+  chipText: {
+    fontSize: 12,
+    color: THEME.primary,
+    fontWeight: "600",
+  },
+  severityRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    marginTop: 8,
+  },
+  severityChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+  },
+  severityChipActive: {
+    borderColor: THEME.primary,
+    backgroundColor: THEME.primaryLight,
+  },
+  severityText: {
+    fontSize: 12,
+    color: THEME.text,
+    fontWeight: "600",
+  },
+  severityTextActive: {
+    color: THEME.primary,
+  },
+  severityClear: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    backgroundColor: THEME.white,
+  },
+  severityClearText: {
+    fontSize: 12,
+    color: THEME.textLight,
+  },
+  countBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: THEME.primary,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 6,
+  },
+  countBadgeText: {
+    color: THEME.white,
+    fontSize: 12,
+    fontWeight: "700",
   },
 
   // Custom Med Adder Styles

@@ -6,7 +6,6 @@ import html2canvas from "html2canvas";
 type Prescription = {
   medication: string;
   dose: string;
-  frequency: string;
   duration: string;
   notes: string;
 };
@@ -21,6 +20,9 @@ type PrescriptionTableProps = {
     gender: string;
     id: string;
   };
+  prescriptionId?: string;
+  showDownloadButton?: boolean;
+  cardRef?: React.RefObject<HTMLDivElement>;
 };
 
 export default function PrescriptionTable({
@@ -28,9 +30,14 @@ export default function PrescriptionTable({
   doctorName,
   clinicName,
   patient,
+  prescriptionId,
+  showDownloadButton = true,
+  cardRef,
 }: PrescriptionTableProps) {
-  const prescriptionRef = useRef<HTMLDivElement>(null);
-  const prescriptionID = "RX-" + Math.floor(100000 + Math.random() * 900000);
+  const internalRef = useRef<HTMLDivElement>(null);
+  const prescriptionRef = cardRef ?? internalRef;
+  const generatedIdRef = useRef("RX-" + Math.floor(100000 + Math.random() * 900000));
+  const resolvedPrescriptionId = prescriptionId ?? generatedIdRef.current;
   const issueDate = new Date().toLocaleDateString();
 
   // ✅ Download as image only
@@ -43,7 +50,7 @@ export default function PrescriptionTable({
       // Download
       const link = document.createElement("a");
       link.href = image;
-      link.download = `prescription-${prescriptionID}.jpg`;
+      link.download = `prescription-${resolvedPrescriptionId}.jpg`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -71,7 +78,7 @@ export default function PrescriptionTable({
             </View>
           </View>
           <View style={styles.rightHeader}>
-            <Text style={styles.prescriptionId}>#{prescriptionID}</Text>
+            <Text style={styles.prescriptionId}>#{resolvedPrescriptionId}</Text>
             <Text style={styles.dateText}>Date: {issueDate}</Text>
           </View>
         </View>
@@ -92,7 +99,6 @@ export default function PrescriptionTable({
           <View style={[styles.tableRow, styles.tableHeader]}>
             <Text style={[styles.tableCell, styles.headerText]}>Medication</Text>
             <Text style={[styles.tableCell, styles.headerText]}>Dose</Text>
-            <Text style={[styles.tableCell, styles.headerText]}>Frequency</Text>
             <Text style={[styles.tableCell, styles.headerText]}>Duration</Text>
             <Text style={[styles.tableCell, styles.headerText]}>Notes</Text>
           </View>
@@ -101,7 +107,6 @@ export default function PrescriptionTable({
             <View key={i} style={[styles.tableRow, i % 2 === 0 ? { backgroundColor: "#FAFAFA" } : {}]}>
               <Text style={styles.tableCell}>{p.medication}</Text>
               <Text style={styles.tableCell}>{p.dose}</Text>
-              <Text style={styles.tableCell}>{p.frequency}</Text>
               <Text style={styles.tableCell}>{p.duration}</Text>
               <Text style={styles.tableCell}>{p.notes}</Text>
             </View>
@@ -110,15 +115,17 @@ export default function PrescriptionTable({
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text style={styles.signatureLabel}>{"Doctor's Signature: ____________________"}</Text>
+          <Text style={styles.signatureLabel}>{`Doctor's Signature: ${doctorName}`}</Text>
           <Text style={styles.footerText}>Thank you for visiting {clinicName}</Text>
         </View>
       </div>
 
-      <TouchableOpacity style={styles.downloadBtn} onPress={handleDownload}>
-        <Printer size={18} color="#fff" />
-        <Text style={styles.downloadText}>Download</Text>
-      </TouchableOpacity>
+      {showDownloadButton && (
+        <TouchableOpacity style={styles.downloadBtn} onPress={handleDownload}>
+          <Printer size={18} color="#fff" />
+          <Text style={styles.downloadText}>Download</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }

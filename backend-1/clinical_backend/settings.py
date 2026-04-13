@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
 from pathlib import Path
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -132,6 +133,9 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ]
 }
+
+# BioPortal (NCBO) API key for ontology search
+BIOPORTAL_API_KEY = os.getenv("BIOPORTAL_API_KEY", "3278cea4-ec5f-472e-850e-575d7981077f")
 
 # CORS settings (dev)
 # Expo web may choose different localhost ports (8081, 8082, ...)

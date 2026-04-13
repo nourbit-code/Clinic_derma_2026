@@ -25,6 +25,7 @@ router.register(r'stock-transactions', views.StockTransactionViewSet)
 
 urlpatterns = [
     path('login/', views.login, name='login'),
+    path('ontology/search/', views.ontology_search, name='ontology_search'),
     path('reports/analytics/', views.report_analytics, name='report_analytics'),
     path('reports/appointments/', views.appointments_report, name='appointments_report'),
     path('reports/inventory/', views.inventory_report, name='inventory_report'),

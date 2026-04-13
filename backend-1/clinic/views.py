@@ -5,7 +5,162 @@ from .models import *
 from .serializers import *
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import User
+from django.db import models
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.conf import settings
 import json
+import requests
+
+
+def _extract_ontology_acronym(ontology_link: str) -> str:
+    if not ontology_link:
+        return ""
+    # BioPortal ontology link ends with /ontologies/{ACRONYM}
+    parts = ontology_link.rstrip('/').split('/')
+    return parts[-1] if parts else ""
+
+
+@api_view(['GET'])
+def ontology_search(request):
+    q = (request.query_params.get('q') or "").strip()
+    concept_type = (request.query_params.get('type') or "disease").strip()
+    ontologies_param = (request.query_params.get('ontologies') or "").strip()
+    limit_param = request.query_params.get('limit') or "20"
+
+    if not q:
+        return Response([])
+
+    try:
+        limit = max(1, min(int(limit_param), 100))
+    except ValueError:
+        limit = 20
+
+    if ontologies_param:
+        ontologies = [o.strip() for o in ontologies_param.split(',') if o.strip()]
+    else:
+        ontologies = ["SNOMEDCT", "ICD10CM", "DOID"]
+
+    local_qs = MedicalConcept.objects.filter(name__icontains=q)
+    if concept_type:
+        local_qs = local_qs.filter(concept_type=concept_type)
+    if ontologies:
+        local_qs = local_qs.filter(ontology__in=ontologies)
+
+    local_results = list(local_qs.order_by('name')[:limit])
+
+    # If local cache is sufficient, return immediately
+    if len(local_results) >= limit:
+        return Response([
+            {
+                "id": c.concept_id,
+                "name": c.name,
+                "type": c.concept_type,
+                "ontology": c.ontology,
+                "code": c.code,
+            } for c in local_results
+        ])
+
+    # Otherwise, fetch from BioPortal and cache
+    api_key = getattr(settings, "BIOPORTAL_API_KEY", "").strip()
+    if not api_key:
+        return Response([
+            {
+                "id": c.concept_id,
+                "name": c.name,
+                "type": c.concept_type,
+                "ontology": c.ontology,
+                "code": c.code,
+            } for c in local_results
+        ])
+
+    try:
+        resp = requests.get(
+            "https://data.bioontology.org/search",
+            params={
+                "q": q,
+                "ontologies": ",".join(ontologies),
+                "pagesize": limit,
+                "page": 1,
+                "apikey": api_key,
+            },
+            timeout=10,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        collection = data.get("collection", []) if isinstance(data, dict) else []
+
+        cached = []
+        for item in collection:
+            concept_id = item.get("@id") or item.get("id") or ""
+            name = item.get("prefLabel") or item.get("label") or ""
+            code = ""
+            if isinstance(item.get("notation"), list) and item.get("notation"):
+                code = str(item.get("notation")[0])
+            elif item.get("notation"):
+                code = str(item.get("notation"))
+
+            ontology_link = ""
+            links = item.get("links") or {}
+            if isinstance(links, dict):
+                ontology_link = links.get("ontology", "")
+            ontology = _extract_ontology_acronym(ontology_link) or item.get("ontology", "")
+
+            if not concept_id or not name or not ontology:
+                continue
+
+            concept, created = MedicalConcept.objects.get_or_create(
+                concept_id=concept_id,
+                defaults={
+                    "name": name,
+                    "concept_type": concept_type,
+                    "ontology": ontology,
+                    "code": code,
+                }
+            )
+            if not created:
+                # Keep cache fresh
+                updated = False
+                if concept.name != name:
+                    concept.name = name
+                    updated = True
+                if concept.code != code:
+                    concept.code = code
+                    updated = True
+                if concept.concept_type != concept_type:
+                    concept.concept_type = concept_type
+                    updated = True
+                if concept.ontology != ontology:
+                    concept.ontology = ontology
+                    updated = True
+                if updated:
+                    concept.save()
+
+            cached.append(concept)
+
+        combined = local_results + [c for c in cached if c.concept_id not in {x.concept_id for x in local_results}]
+        combined = combined[:limit]
+
+        return Response([
+            {
+                "id": c.concept_id,
+                "name": c.name,
+                "type": c.concept_type,
+                "ontology": c.ontology,
+                "code": c.code,
+            } for c in combined
+        ])
+
+    except requests.RequestException:
+        return Response([
+            {
+                "id": c.concept_id,
+                "name": c.name,
+                "type": c.concept_type,
+                "ontology": c.ontology,
+                "code": c.code,
+            } for c in local_results
+        ])
 
 
 @api_view(['POST'])
@@ -123,6 +278,7 @@ class PatientViewSet(viewsets.ModelViewSet):
             'created_at': patient.created_at.strftime('%Y-%m-%d')
         })
 
+    @method_decorator(csrf_exempt)
     @action(detail=True, methods=['post'])
     def save_diagnosis(self, request, pk=None):
         """
@@ -153,6 +309,14 @@ class PatientViewSet(viewsets.ModelViewSet):
         appointment_id = request.data.get('appointment_id')
         diagnosis_text = request.data.get('diagnosis', '')
         notes = request.data.get('notes', '')
+        primary_disease_id = request.data.get('primary_disease_id', '')
+        primary_disease_label = request.data.get('primary_disease_label', '')
+        primary_disease_ontology = request.data.get('primary_disease_ontology', '')
+        symptom_ids = request.data.get('symptom_ids', [])
+        symptom_labels = request.data.get('symptom_labels', [])
+        location_ids = request.data.get('location_ids', [])
+        location_labels = request.data.get('location_labels', [])
+        severity = request.data.get('severity', '')
         medications_data = request.data.get('medications', [])
         photos_data = request.data.get('photos', [])
         labs_data = request.data.get('labs', [])
@@ -171,7 +335,15 @@ class PatientViewSet(viewsets.ModelViewSet):
             doctor=doctor,
             appointment=appointment,
             diagnosis=diagnosis_text,
-            notes=notes
+            notes=notes,
+            primary_disease_id=primary_disease_id or '',
+            primary_disease_label=primary_disease_label or '',
+            primary_disease_ontology=primary_disease_ontology or '',
+            symptom_ids=json.dumps(symptom_ids) if isinstance(symptom_ids, list) else str(symptom_ids or ''),
+            symptom_labels=json.dumps(symptom_labels) if isinstance(symptom_labels, list) else str(symptom_labels or ''),
+            location_ids=json.dumps(location_ids) if isinstance(location_ids, list) else str(location_ids or ''),
+            location_labels=json.dumps(location_labels) if isinstance(location_labels, list) else str(location_labels or ''),
+            severity=severity or ''
         )
         
         # Create Prescription if there are medications
@@ -239,7 +411,6 @@ class PatientViewSet(viewsets.ModelViewSet):
         laser_session_data = request.data.get('laser_session')
         laser_session = None
         if laser_session_data:
-            import json
             laser_session = LaserSession.objects.create(
                 patient=patient,
                 doctor=doctor,
@@ -933,6 +1104,82 @@ class MedicalRecordViewSet(viewsets.ModelViewSet):
 class MedicationViewSet(viewsets.ModelViewSet):
     queryset = Medication.objects.all()
     serializer_class = MedicationSerializer
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        q = (self.request.query_params.get('q') or "").strip()
+        if q:
+            queryset = queryset.filter(
+                models.Q(name__icontains=q) |
+                models.Q(form__icontains=q) |
+                models.Q(manufacturer__icontains=q) |
+                models.Q(category__icontains=q)
+            )
+        queryset = queryset.order_by('name')
+        limit = self.request.query_params.get('limit')
+        if limit:
+            try:
+                limit_val = max(1, min(int(limit), 100))
+                queryset = queryset[:limit_val]
+            except ValueError:
+                pass
+        return queryset
+
+    @action(detail=False, methods=['get'])
+    def suggest(self, request):
+        q = (request.query_params.get('q') or "").strip()
+        limit = request.query_params.get('limit')
+        if not q:
+            return Response([])
+        try:
+            limit_val = max(1, min(int(limit or 10), 50))
+        except ValueError:
+            limit_val = 10
+
+        base_qs = Medication.objects.filter(
+            models.Q(name__icontains=q) |
+            models.Q(category__icontains=q) |
+            models.Q(manufacturer__icontains=q)
+        )
+
+        qs = base_qs.order_by('name')[:limit_val]
+        if qs:
+            serializer = self.get_serializer(qs, many=True)
+            return Response(serializer.data)
+
+        # Fallback: map common diseases to broad categories
+        q_lower = q.lower()
+        category_map = {
+            "acne": ["Antibiotic", "Antifungal", "Vitamin"],
+            "rosacea": ["Antibiotic", "Vitamin"],
+            "eczema": ["Antifungal", "Vitamin"],
+            "dermatitis": ["Antifungal", "Vitamin"],
+            "psoriasis": ["Vitamin", "Antifungal"],
+            "fungal": ["Antifungal"],
+            "tinea": ["Antifungal"],
+            "infection": ["Antibiotic"],
+            "bacterial": ["Antibiotic"],
+            "viral": ["Antiviral"],
+            "herpes": ["Antiviral"],
+            "allergy": ["Vitamin"],
+            "urticaria": ["Vitamin"],
+            "pruritus": ["Vitamin"],
+            "melasma": ["Vitamin"],
+        }
+        matched_categories = []
+        for key, cats in category_map.items():
+            if key in q_lower:
+                matched_categories.extend(cats)
+
+        if matched_categories:
+            cat_qs = Medication.objects.filter(category__in=matched_categories).order_by('name')[:limit_val]
+            serializer = self.get_serializer(cat_qs, many=True)
+            return Response(serializer.data)
+
+        # Final fallback: return first N medications
+        fallback_qs = Medication.objects.all().order_by('name')[:limit_val]
+        serializer = self.get_serializer(fallback_qs, many=True)
+        return Response(serializer.data)
 
 
 class PrescriptionViewSet(viewsets.ModelViewSet):

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Alert,
   Modal,
@@ -41,7 +41,6 @@ if (Platform.OS !== 'web') {
 type Prescription = {
   medication: string;
   dose: string;
-  frequency: string;
   duration: string;
   notes: string;
 };
@@ -109,7 +108,12 @@ type PatientFileData = {
 export default function DoctorPatientPage() {
   const router = useRouter();
   const { id: patientId } = useLocalSearchParams<{ id: string }>();
-  const { isLoading: authLoading } = useAuth();
+  const { isLoading: authLoading, user } = useAuth();
+  const doctorDisplayName = useMemo(() => {
+    const name = user?.name?.trim();
+    if (!name) return "Dr. Emily Carter";
+    return name.toLowerCase().startsWith("dr") ? name : `Dr. ${name}`;
+  }, [user?.name]);
   
   const [expanded, setExpanded] = useState<number | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -876,7 +880,7 @@ export default function DoctorPatientPage() {
                   <Text style={styles.subTitle}>Prescriptions</Text>
                   <PrescriptionTable
                     prescriptions={v.prescriptions}
-                    doctorName="Dr. Emily Carter"
+                    doctorName={doctorDisplayName}
                     clinicName="Derma Clinic"
                     patient={{
                       name: patient.name,
