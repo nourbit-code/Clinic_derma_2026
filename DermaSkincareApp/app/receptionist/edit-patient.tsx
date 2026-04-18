@@ -26,6 +26,8 @@ export default function EditPatient() {
   const [hasInsurance, setHasInsurance] = useState(false);
   const [insuranceCompanyId, setInsuranceCompanyId] = useState<number | ''>('');
   const [insuranceMemberId, setInsuranceMemberId] = useState("");
+  const [insuranceValidFrom, setInsuranceValidFrom] = useState("");
+  const [insuranceValidTo, setInsuranceValidTo] = useState("");
   const [insuranceCompanies, setInsuranceCompanies] = useState<{ id: number; name: string; discount_percent: number }[]>([]);
 
   // Fetch patient data
@@ -51,6 +53,8 @@ export default function EditPatient() {
         setHasInsurance(!!patient.has_insurance);
         setInsuranceCompanyId(patient.insurance_company ?? '');
         setInsuranceMemberId(patient.insurance_member_id || "");
+        setInsuranceValidFrom(patient.insurance_valid_from || "");
+        setInsuranceValidTo(patient.insurance_valid_to || "");
       } else {
         setError(result.error || 'Failed to fetch patient');
       }
@@ -89,6 +93,10 @@ export default function EditPatient() {
       Alert.alert("Error", "Please select an insurance company.");
       return;
     }
+    if (insuranceValidFrom && insuranceValidTo && insuranceValidFrom > insuranceValidTo) {
+      Alert.alert("Error", "Insurance Valid To must be after Valid From.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -112,6 +120,8 @@ export default function EditPatient() {
       updateData.has_insurance = hasInsurance;
       updateData.insurance_company = hasInsurance ? insuranceCompanyId || null : null;
       updateData.insurance_member_id = hasInsurance ? insuranceMemberId : '';
+      updateData.insurance_valid_from = hasInsurance ? insuranceValidFrom || null : null;
+      updateData.insurance_valid_to = hasInsurance ? insuranceValidTo || null : null;
 
       console.log('[EditPatient] Updating patient ID:', patientId);
       console.log('[EditPatient] Update data:', updateData);
@@ -285,6 +295,22 @@ export default function EditPatient() {
               value={insuranceMemberId}
               onChangeText={setInsuranceMemberId}
               placeholder="Insurance Member ID / Policy Number"
+              editable={!submitting}
+            />
+
+            <TextInput
+              style={styles.input}
+              value={insuranceValidFrom}
+              onChangeText={setInsuranceValidFrom}
+              placeholder="Insurance Valid From (YYYY-MM-DD)"
+              editable={!submitting}
+            />
+
+            <TextInput
+              style={styles.input}
+              value={insuranceValidTo}
+              onChangeText={setInsuranceValidTo}
+              placeholder="Insurance Valid To (YYYY-MM-DD)"
               editable={!submitting}
             />
           </>

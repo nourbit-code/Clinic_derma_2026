@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings
 import json
 import requests
+from datetime import date
 
 
 def _extract_ontology_acronym(ontology_link: str) -> str:
@@ -264,6 +265,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         surgeries = [s.strip() for s in patient.surgeries.split(',') if s.strip()] if patient.surgeries else []
         
         insurance_company = patient.insurance_company
+        insurance_is_active = patient.is_insurance_active(date.today())
         return Response({
             'id': patient.patient_id,
             'name': patient.name,
@@ -282,6 +284,9 @@ class PatientViewSet(viewsets.ModelViewSet):
             'insurance_company_name': insurance_company.name if insurance_company else '',
             'insurance_discount_percent': float(insurance_company.discount_percent) if insurance_company else 0,
             'insurance_member_id': patient.insurance_member_id or '',
+            'insurance_valid_from': patient.insurance_valid_from.isoformat() if patient.insurance_valid_from else None,
+            'insurance_valid_to': patient.insurance_valid_to.isoformat() if patient.insurance_valid_to else None,
+            'insurance_is_active': insurance_is_active,
             'created_at': patient.created_at.strftime('%Y-%m-%d')
         })
 
@@ -687,6 +692,7 @@ class PatientViewSet(viewsets.ModelViewSet):
                 all_labs.append(file_data)
         
         insurance_company = patient.insurance_company
+        insurance_is_active = patient.is_insurance_active(date.today())
         return Response({
             'id': patient.patient_id,
             'name': patient.name,
@@ -703,6 +709,9 @@ class PatientViewSet(viewsets.ModelViewSet):
             'insurance_company_name': insurance_company.name if insurance_company else '',
             'insurance_discount_percent': float(insurance_company.discount_percent) if insurance_company else 0,
             'insurance_member_id': patient.insurance_member_id or '',
+            'insurance_valid_from': patient.insurance_valid_from.isoformat() if patient.insurance_valid_from else None,
+            'insurance_valid_to': patient.insurance_valid_to.isoformat() if patient.insurance_valid_to else None,
+            'insurance_is_active': insurance_is_active,
             'visits': visits,
             'photos': all_photos,
             'labs': all_labs,
@@ -1114,13 +1123,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         patient_id = request.data.get('patient')
         if patient_id:
             patient = Patient.objects.filter(patient_id=patient_id).select_related('insurance_company').first()
-            if patient and patient.has_insurance and patient.insurance_company:
+            if patient and patient.is_insurance_active(date.today()):
                 if insurance_coverage <= 0:
                     insurance_coverage = float(patient.insurance_company.discount_percent)
                 if not insurance_provider:
                     insurance_provider = patient.insurance_company.name
                 request.data['insurance_provider'] = insurance_provider
                 request.data['insurance_coverage'] = insurance_coverage
+            else:
+                request.data['insurance_provider'] = ''
+                request.data['insurance_coverage'] = 0
 
         insurance_amount = max(0, (subtotal - discount_amount) * (insurance_coverage / 100))
         total_amount = max(0, subtotal - discount_amount - insurance_amount)
@@ -1168,13 +1180,16 @@ class InvoiceViewSet(viewsets.ModelViewSet):
 
             # Auto-apply insurance from patient account if not provided
             patient = instance.patient
-            if patient and patient.has_insurance and patient.insurance_company:
+            if patient and patient.is_insurance_active(date.today()):
                 if insurance_coverage <= 0:
                     insurance_coverage = float(patient.insurance_company.discount_percent)
                 if not insurance_provider:
                     insurance_provider = patient.insurance_company.name
                 request.data['insurance_provider'] = insurance_provider
                 request.data['insurance_coverage'] = insurance_coverage
+            else:
+                request.data['insurance_provider'] = ''
+                request.data['insurance_coverage'] = 0
 
             insurance_amount = max(0, (subtotal - discount_amount) * (insurance_coverage / 100))
             total_amount = max(0, subtotal - discount_amount - insurance_amount)
