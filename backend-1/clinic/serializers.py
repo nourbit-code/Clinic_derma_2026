@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from datetime import date
 from .models import (
     Patient, Doctor, Receptionist, Service, Appointment, AppointmentService,
     Invoice, InvoiceItem, MedicalRecord, Medication, Prescription, PrescriptionMedication,
@@ -18,13 +19,18 @@ class UserSerializer(serializers.ModelSerializer):
 class PatientSerializer(serializers.ModelSerializer):
     insurance_company_name = serializers.CharField(source='insurance_company.name', read_only=True)
     insurance_discount_percent = serializers.DecimalField(source='insurance_company.discount_percent', max_digits=5, decimal_places=2, read_only=True)
+    insurance_is_active = serializers.SerializerMethodField()
+
+    def get_insurance_is_active(self, obj):
+        return obj.is_insurance_active(date.today())
+
     class Meta:
         model = Patient
         fields = [
             'patient_id', 'name', 'age', 'gender', 'phone', 'email', 'notes',
             'medical_history', 'surgeries', 'created_at',
-            'has_insurance', 'insurance_company', 'insurance_member_id',
-            'insurance_company_name', 'insurance_discount_percent',
+            'has_insurance', 'insurance_company', 'insurance_member_id', 'insurance_valid_from', 'insurance_valid_to',
+            'insurance_company_name', 'insurance_discount_percent', 'insurance_is_active',
         ]
 
 

@@ -34,6 +34,9 @@ interface ApiPatient {
   insurance_company_name?: string;
   insurance_discount_percent?: number;
   insurance_member_id?: string;
+  insurance_valid_from?: string | null;
+  insurance_valid_to?: string | null;
+  insurance_is_active?: boolean;
 }
 
 interface InsuranceCompany {
@@ -50,6 +53,8 @@ export default function AddPatient() {
   const [hasInsurance, setHasInsurance] = useState(false);
   const [insuranceCompanyId, setInsuranceCompanyId] = useState<number | ''>('');
   const [insuranceMemberId, setInsuranceMemberId] = useState("");
+  const [insuranceValidFrom, setInsuranceValidFrom] = useState("");
+  const [insuranceValidTo, setInsuranceValidTo] = useState("");
   const [insuranceCompanies, setInsuranceCompanies] = useState<InsuranceCompany[]>([]);
   const [patients, setPatients] = useState<ApiPatient[]>([]);
   const [editingPatient, setEditingPatient] = useState<ApiPatient | null>(null);
@@ -106,6 +111,10 @@ export default function AddPatient() {
       Alert.alert("Missing Insurance", "Please select an insurance company.");
       return;
     }
+    if (insuranceValidFrom && insuranceValidTo && insuranceValidFrom > insuranceValidTo) {
+      Alert.alert("Invalid Dates", "Insurance Valid To must be after Valid From.");
+      return;
+    }
 
     setSubmitting(true);
 
@@ -121,6 +130,8 @@ export default function AddPatient() {
           has_insurance: hasInsurance,
           insurance_company: hasInsurance ? insuranceCompanyId || null : null,
           insurance_member_id: hasInsurance ? insuranceMemberId : '',
+          insurance_valid_from: hasInsurance ? insuranceValidFrom || null : null,
+          insurance_valid_to: hasInsurance ? insuranceValidTo || null : null,
         });
 
         if (result.success) {
@@ -141,6 +152,8 @@ export default function AddPatient() {
           has_insurance: hasInsurance,
           insurance_company: hasInsurance ? insuranceCompanyId || null : null,
           insurance_member_id: hasInsurance ? insuranceMemberId : '',
+          insurance_valid_from: hasInsurance ? insuranceValidFrom || null : null,
+          insurance_valid_to: hasInsurance ? insuranceValidTo || null : null,
         });
 
         console.log('[AddPatient] Create result:', result);
@@ -161,6 +174,8 @@ export default function AddPatient() {
       setHasInsurance(false);
       setInsuranceCompanyId('');
       setInsuranceMemberId("");
+      setInsuranceValidFrom("");
+      setInsuranceValidTo("");
     } catch (error) {
       console.error('[AddPatient] Error:', error);
       Alert.alert("Error", "An unexpected error occurred");
@@ -177,6 +192,8 @@ export default function AddPatient() {
     setHasInsurance(!!patient.has_insurance);
     setInsuranceCompanyId(patient.insurance_company ?? '');
     setInsuranceMemberId(patient.insurance_member_id || "");
+    setInsuranceValidFrom(patient.insurance_valid_from || "");
+    setInsuranceValidTo(patient.insurance_valid_to || "");
     setEditingPatient(patient);
   };
 
@@ -188,6 +205,8 @@ export default function AddPatient() {
     setHasInsurance(false);
     setInsuranceCompanyId('');
     setInsuranceMemberId("");
+    setInsuranceValidFrom("");
+    setInsuranceValidTo("");
     setEditingPatient(null);
   };
 
@@ -338,6 +357,22 @@ export default function AddPatient() {
               placeholder="Insurance Member ID / Policy Number"
               value={insuranceMemberId}
               onChangeText={setInsuranceMemberId}
+              editable={!submitting}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Insurance Valid From (YYYY-MM-DD)"
+              value={insuranceValidFrom}
+              onChangeText={setInsuranceValidFrom}
+              editable={!submitting}
+            />
+
+            <TextInput
+              style={styles.input}
+              placeholder="Insurance Valid To (YYYY-MM-DD)"
+              value={insuranceValidTo}
+              onChangeText={setInsuranceValidTo}
               editable={!submitting}
             />
           </>

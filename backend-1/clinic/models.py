@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User
 from datetime import time
+from datetime import date as current_date
 
 # -------------------------
 # Insurance Company
@@ -34,10 +35,22 @@ class Patient(models.Model):
     has_insurance = models.BooleanField(default=False)
     insurance_company = models.ForeignKey(InsuranceCompany, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
     insurance_member_id = models.CharField(max_length=100, blank=True)
+    insurance_valid_from = models.DateField(null=True, blank=True)
+    insurance_valid_to = models.DateField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return f"{self.name} ({self.patient_id})"
+
+    def is_insurance_active(self, on_date=None):
+        if not self.has_insurance or not self.insurance_company:
+            return False
+        check_date = on_date or current_date.today()
+        if self.insurance_valid_from and check_date < self.insurance_valid_from:
+            return False
+        if self.insurance_valid_to and check_date > self.insurance_valid_to:
+            return False
+        return True
 
 
 # -------------------------
