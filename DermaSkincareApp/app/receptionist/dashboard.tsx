@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { View, Text, TouchableOpacity, ScrollView, StyleSheet, TextInput, ActivityIndicator, RefreshControl, Alert } from "react-native";
-import { Link, useRouter } from "expo-router";
+import { Link, useRouter, useFocusEffect } from "expo-router";
 import { Ionicons, Feather } from '@expo/vector-icons'; 
 import { Calendar } from 'react-native-calendars'; 
 import { getReceptionistDashboard } from '../../src/api/receptionistApi';
@@ -62,11 +62,8 @@ const GRAY_BG = '#F7F7F7'; // Clean background for the main screen
 const BORDER_LIGHT = '#E0E0E0';
 const TEXT_DARK = '#333333';
 const TEXT_MEDIUM = '#666666';
-
-// --- STATUS COLORS (Matching Image Colors) ---
-const STATUS_PENDING_BG = '#FFB800'; // Orange/Amber
-const STATUS_CONFIRMED_BG = '#30AD4F'; // Bright Green
-const STATUS_CHECKED_IN_BG = PRIMARY_LIGHT; // Using primary light for Checked In
+const COMPLETED_ROW_BG = '#E9F7EF';
+const CANCELLED_ROW_BG = '#FDEBEC';
 
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -94,8 +91,8 @@ export default function ReceptionistDashboard() {
     
     // UI state
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState('All');
     const [selectedDate, setSelectedDate] = useState(getTodayDate());
+    const [isFocused, setIsFocused] = useState(true);
     
     const appointmentsOnSelectedDate: AppointmentData[] = appointmentsByDate[selectedDate] || [];
 
@@ -118,36 +115,43 @@ export default function ReceptionistDashboard() {
                 setAppointmentsByDate(appointments_by_date);
             } else {
                 setError(result.error);
-                Alert.alert('Error', result.error);
+                if (isFocused) {
+                    Alert.alert('Error', result.error);
+                }
             }
         } catch (err) {
             const errorMessage = 'Failed to load dashboard data. Please check your connection.';
             setError(errorMessage);
             console.error('[ReceptionistDashboard] Error:', err);
-            Alert.alert('Error', errorMessage);
+            if (isFocused) {
+                Alert.alert('Error', errorMessage);
+            }
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
-    }, [receptionistId]);
+    }, [receptionistId, isFocused]);
 
     // Initial data fetch - wait for auth to load first
-    useEffect(() => {
-        if (!authLoading) {
-            console.log('[ReceptionistDashboard] Auth loaded, fetching data for receptionist ID:', receptionistId);
-            fetchDashboardData();
-        }
-    }, [fetchDashboardData, authLoading, receptionistId]);
+    useFocusEffect(
+        useCallback(() => {
+            setIsFocused(true);
+            if (!authLoading) {
+                console.log('[ReceptionistDashboard] Screen focused, fetching data for receptionist ID:', receptionistId);
+                fetchDashboardData();
+            }
 
-    // Auto-refresh every 30 seconds to sync with doctor changes
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            console.log('[Receptionist Dashboard] Auto-refreshing data...');
-            fetchDashboardData();
-        }, 30000); // 30 seconds
+            const intervalId = setInterval(() => {
+                console.log('[Receptionist Dashboard] Auto-refreshing data...');
+                fetchDashboardData();
+            }, 30000);
 
-        return () => clearInterval(intervalId);
-    }, [fetchDashboardData]);
+            return () => {
+                setIsFocused(false);
+                clearInterval(intervalId);
+            };
+        }, [fetchDashboardData, authLoading, receptionistId])
+    );
 
     // Pull to refresh
     const onRefresh = useCallback(() => {
@@ -155,36 +159,33 @@ export default function ReceptionistDashboard() {
         fetchDashboardData();
     }, [fetchDashboardData]);
 
-    // Helper functions for status colors (MAIN LIST)
-    const getStatusStyle = (status: string) => {
-        switch (status) {
-            case 'Confirmed': return { backgroundColor: STATUS_CONFIRMED_BG };
-            case 'Pending': return { backgroundColor: STATUS_PENDING_BG };
-            case 'Checked In': return { backgroundColor: STATUS_CHECKED_IN_BG };
-            default: return { backgroundColor: STATUS_PENDING_BG };
-        }
-    };
-    
-    // Helper function for calendar list status text color
-    const getCalendarStatusTextColor = (status: string) => {
-        switch (status) {
-            case 'Confirmed': return STATUS_CONFIRMED_BG;
-            case 'Pending': return STATUS_PENDING_BG;
-            case 'Checked In': return PRIMARY_DARK;
-            default: return TEXT_MEDIUM;
-        }
+    const parseAppointmentDateTime = (dateStr: string, timeStr: string) => {
+        const [timePart, meridiemRaw] = timeStr.split(' ');
+        const [rawHours, rawMinutes] = timePart.split(':').map((t) => parseInt(t, 10));
+        const meridiem = (meridiemRaw || '').toUpperCase();
+        let hours = rawHours;
+        if (meridiem === 'PM' && hours < 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        const paddedHours = String(hours).padStart(2, '0');
+        const paddedMinutes = String(rawMinutes).padStart(2, '0');
+        return new Date(`${dateStr}T${paddedHours}:${paddedMinutes}:00`);
     };
 
-    // --- Filtering Logic (Based on Search and Status Filter) ---
+    const isCompleted = (status: string) => status === 'Confirmed' || status === 'Completed';
+    const isCancelled = (status: string) => status === 'Canceled' || status === 'Cancelled';
+
+    const shouldAutoCancel = (dateStr: string, timeStr: string, status: string) => {
+        if (isCompleted(status) || isCancelled(status)) return false;
+        const apptDate = parseAppointmentDateTime(dateStr, timeStr);
+        const threeHoursLater = new Date(apptDate.getTime() + 3 * 60 * 60 * 1000);
+        return new Date() > threeHoursLater;
+    };
+
+    // --- Filtering Logic (Based on Search) ---
     const filteredAppointments = useMemo(() => {
         let results = todaysAppointments;
 
-        // 1. Status Filtering
-        if (filterStatus !== 'All') {
-            results = results.filter(appt => appt.status === filterStatus);
-        }
-
-        // 2. Search Filtering
+        // 1. Search Filtering
         if (searchTerm) {
             const lowerCaseSearch = searchTerm.toLowerCase();
             results = results.filter(appt => 
@@ -193,7 +194,7 @@ export default function ReceptionistDashboard() {
             );
         }
         return results;
-    }, [todaysAppointments, searchTerm, filterStatus]);
+    }, [todaysAppointments, searchTerm]);
 
     // Calendar Marking Logic
     const calendarMarkedDates = useMemo(() => {
@@ -212,31 +213,7 @@ export default function ReceptionistDashboard() {
         return marked;
     }, [appointmentsByDate, selectedDate]);
     
-    // --- Filter Button Component ---
-    const FilterButton: React.FC<{ label: string, status: string }> = ({ label, status }) => {
-        const isActive = filterStatus === status;
-        let colorStyle = {};
-        
-        switch(status) {
-            case 'Pending': colorStyle = { backgroundColor: STATUS_PENDING_BG }; break;
-            case 'Confirmed': colorStyle = { backgroundColor: STATUS_CONFIRMED_BG }; break;
-            case 'All': colorStyle = { backgroundColor: PRIMARY_DARK }; break;
-        }
-
-        return (
-            <TouchableOpacity 
-                style={[
-                    styles.filterButton, 
-                    isActive ? colorStyle : styles.filterButtonInactive
-                ]}
-                onPress={() => setFilterStatus(status)}
-            >
-                <Text style={[styles.filterButtonText, isActive ? {color: WHITE} : {color: TEXT_DARK}]}>
-                    {label}
-                </Text>
-            </TouchableOpacity>
-        );
-    };
+    
 
     // Loading state - wait for both auth and data to load
     if (authLoading || loading) {
@@ -330,11 +307,6 @@ export default function ReceptionistDashboard() {
                                 onChangeText={setSearchTerm}
                             />
                         </View>
-                        <View style={styles.filterGroup}>
-                            <FilterButton label="All" status="All" />
-                            <FilterButton label="Pending" status="Pending" />
-                            <FilterButton label="Confirmed" status="Confirmed" />
-                        </View>
                     </View>
 
                     {/* Table Header (Simplified & Styled) */}
@@ -342,42 +314,39 @@ export default function ReceptionistDashboard() {
                         <Text style={[styles.headerCellText, styles.colPatient]}>Patient Name</Text>
                         <Text style={[styles.headerCellText, styles.colService]}>Service</Text>
                         <Text style={[styles.headerCellText, styles.colTime]}>Time</Text>
-                        <Text style={[styles.headerCellText, styles.colStatus]}>Status</Text>
                         <View style={styles.colActionPlaceholder} />
                     </View>
 
                     {/* Appointment Rows (Image Replication) */}
-                    {filteredAppointments.map((appt) => (
+                    {filteredAppointments.map((appt) => {
+                        const todayStr = getTodayDate();
+                        const autoCancelled = shouldAutoCancel(todayStr, appt.time, appt.status);
+                        const completed = isCompleted(appt.status);
+                        const cancelled = isCancelled(appt.status) || autoCancelled;
+                        const rowHighlightStyle = completed
+                            ? styles.rowCompleted
+                            : cancelled
+                            ? styles.rowCancelled
+                            : null;
+
+                        return (
                         <View 
                             key={appt.id} 
                             style={[
                                 styles.rowCard,
-                                // Highlight the first row exactly like the image
-                                appt.id === 101 ? styles.rowCardHighlighted : {} 
+                                rowHighlightStyle,
                             ]}
                         >
                             <Text style={[styles.rowText, styles.colPatient, styles.patientNameText]}>{appt.patient}</Text>
                             <Text style={[styles.rowText, styles.colService]}>{appt.service}</Text>
                             <Text style={[styles.rowText, styles.colTime]}>{appt.time}</Text>
                             
-                            <View style={[styles.colStatus, styles.statusContainer]}>
-                                <View
-                                    style={[
-                                        styles.statusBadge,
-                                        getStatusStyle(appt.status),
-                                    ]}
-                                >
-                                    <Text style={styles.statusBadgeText}>
-                                        {appt.status}
-                                    </Text>
-                                </View>
-                            </View>
-                            
                             <TouchableOpacity style={styles.colAction}>
                                 <Ionicons name="arrow-forward-sharp" size={20} color={PRIMARY_DARK} />
                             </TouchableOpacity>
                         </View>
-                    ))}
+                        );
+                    })}
                     
                     {filteredAppointments.length === 0 && (
                         <View style={styles.noResults}>
@@ -416,11 +385,25 @@ export default function ReceptionistDashboard() {
                 {/* Scrollable List for Selected Date - PROFESSIONAL LIST */}
                 <ScrollView style={styles.appointmentsList}>
                     {appointmentsOnSelectedDate.length > 0 ? (
-                        appointmentsOnSelectedDate.map((app: AppointmentData) => ( 
+                        appointmentsOnSelectedDate.map((app: AppointmentData) => { 
+                            const autoCancelled = shouldAutoCancel(selectedDate, app.time, app.status);
+                            const completed = isCompleted(app.status);
+                            const cancelled = isCancelled(app.status) || autoCancelled;
+                            const cardHighlightStyle = completed
+                                ? styles.cardCompleted
+                                : cancelled
+                                ? styles.cardCancelled
+                                : null;
+
+                            return (
                             // Non-clickable View element
                             <View 
                                 key={app.id} 
-                                style={[styles.appointmentCardModern, { borderLeftColor: PRIMARY_DARK }]}
+                                style={[
+                                    styles.appointmentCardModern, 
+                                    { borderLeftColor: PRIMARY_DARK },
+                                    cardHighlightStyle,
+                                ]}
                             >
                                 <View style={styles.timeBadgeModern}>
                                     <Text style={styles.timeTextModern}>{app.time}</Text>
@@ -429,18 +412,11 @@ export default function ReceptionistDashboard() {
                                 
                                 <View style={styles.appointmentDetailsModern}>
                                     <Text style={styles.appointmentNameModern}>{app.patient}</Text>
-                                    <Text 
-                                        style={[
-                                            styles.appointmentStatusModern, 
-                                            { color: getCalendarStatusTextColor(app.status) }
-                                        ]}
-                                    >
-                                        {app.status}
-                                    </Text>
                                 </View>
                                 <Ionicons name="chevron-forward-sharp" size={20} color={PRIMARY_DARK} />
                             </View>
-                        ))
+                            );
+                        })
                     ) : (
                         <View style={styles.noAppointmentsContainer}>
                             <Ionicons name="information-circle-outline" size={18} color={TEXT_MEDIUM} />
@@ -629,6 +605,12 @@ const styles = StyleSheet.create({
         borderBottomWidth: 1,
         borderBottomColor: GRAY_BG,
     },
+    rowCompleted: {
+        backgroundColor: COMPLETED_ROW_BG,
+    },
+    rowCancelled: {
+        backgroundColor: CANCELLED_ROW_BG,
+    },
     rowCardHighlighted: {
         backgroundColor: '#FFF5F8',
         borderRadius: 10,
@@ -731,6 +713,12 @@ const styles = StyleSheet.create({
         borderLeftColor: PRIMARY_DARK,
         borderWidth: 1,
         borderColor: GRAY_BG,
+    },
+    cardCompleted: {
+        backgroundColor: COMPLETED_ROW_BG,
+    },
+    cardCancelled: {
+        backgroundColor: CANCELLED_ROW_BG,
     },
     timeBadgeModern: { 
         paddingVertical: 4,

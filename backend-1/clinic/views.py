@@ -204,7 +204,8 @@ def login(request):
                 'user': {
                     'id': receptionist.receptionist_id,
                     'name': receptionist.name,
-                    'email': receptionist.email
+                    'email': receptionist.email,
+                    'is_admin': receptionist.is_admin,
                 }
             })
     except Receptionist.DoesNotExist:
@@ -262,6 +263,7 @@ class PatientViewSet(viewsets.ModelViewSet):
         medical_history = [h.strip() for h in patient.medical_history.split(',') if h.strip()] if patient.medical_history else []
         surgeries = [s.strip() for s in patient.surgeries.split(',') if s.strip()] if patient.surgeries else []
         
+        insurance_company = patient.insurance_company
         return Response({
             'id': patient.patient_id,
             'name': patient.name,
@@ -275,6 +277,11 @@ class PatientViewSet(viewsets.ModelViewSet):
             'surgeries': surgeries,
             'last_visit': last_visit,
             'last_diagnosis': last_diagnosis,
+            'has_insurance': patient.has_insurance,
+            'insurance_company': insurance_company.id if insurance_company else None,
+            'insurance_company_name': insurance_company.name if insurance_company else '',
+            'insurance_discount_percent': float(insurance_company.discount_percent) if insurance_company else 0,
+            'insurance_member_id': patient.insurance_member_id or '',
             'created_at': patient.created_at.strftime('%Y-%m-%d')
         })
 
@@ -679,6 +686,7 @@ class PatientViewSet(viewsets.ModelViewSet):
             else:
                 all_labs.append(file_data)
         
+        insurance_company = patient.insurance_company
         return Response({
             'id': patient.patient_id,
             'name': patient.name,
@@ -690,6 +698,11 @@ class PatientViewSet(viewsets.ModelViewSet):
             'notes': patient.notes or '',
             'medicalHistory': [h.strip() for h in patient.medical_history.split(',') if h.strip()] if patient.medical_history else [],
             'surgeries': [s.strip() for s in patient.surgeries.split(',') if s.strip()] if patient.surgeries else [],
+            'has_insurance': patient.has_insurance,
+            'insurance_company': insurance_company.id if insurance_company else None,
+            'insurance_company_name': insurance_company.name if insurance_company else '',
+            'insurance_discount_percent': float(insurance_company.discount_percent) if insurance_company else 0,
+            'insurance_member_id': patient.insurance_member_id or '',
             'visits': visits,
             'photos': all_photos,
             'labs': all_labs,
@@ -700,6 +713,9 @@ class PatientViewSet(viewsets.ModelViewSet):
 class DoctorViewSet(viewsets.ModelViewSet):
     queryset = Doctor.objects.all()
     serializer_class = DoctorSerializer
+
+    def get_queryset(self):
+        return Doctor.objects.all().order_by('name')
 
     @action(detail=True, methods=['get'])
     def dashboard(self, request, pk=None):
@@ -867,6 +883,74 @@ class ReceptionistViewSet(viewsets.ModelViewSet):
     queryset = Receptionist.objects.all()
     serializer_class = ReceptionistSerializer
 
+    def get_queryset(self):
+        return Receptionist.objects.all().order_by('name')
+
+    def create(self, request, *args, **kwargs):
+        name = (request.data.get('name') or '').strip()
+        email = (request.data.get('email') or '').strip().lower()
+        password = request.data.get('password') or ''
+        is_admin = bool(request.data.get('is_admin', False))
+
+        if not name or not email or not password:
+            return Response({'error': 'Name, email, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if Receptionist.objects.filter(email=email).exists():
+            return Response({'error': 'Receptionist with this email already exists.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        username_base = email.split('@')[0] or f"receptionist_{name.replace(' ', '_').lower()}"
+        username = username_base
+        suffix = 1
+        while User.objects.filter(username=username).exists():
+            suffix += 1
+            username = f"{username_base}_{suffix}"
+
+        user = User.objects.create_user(username=username, email=email, password=password)
+        if not Receptionist.objects.filter(is_admin=True).exists():
+            is_admin = True
+
+        receptionist = Receptionist.objects.create(
+            user=user,
+            name=name,
+            email=email,
+            password=password,
+            is_admin=is_admin
+        )
+        serializer = self.get_serializer(receptionist)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        receptionist = self.get_object()
+        if receptionist.is_admin and Receptionist.objects.filter(is_admin=True).count() <= 1:
+            return Response({'error': 'Cannot delete the only admin receptionist.'}, status=status.HTTP_400_BAD_REQUEST)
+        linked_user = receptionist.user
+        receptionist.delete()
+        if linked_user:
+            linked_user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=False, methods=['post'])
+    def ensure_admin(self, request):
+        """
+        If no admin receptionist exists yet, promote the provided receptionist id as admin.
+        """
+        receptionist_id = request.data.get('receptionist_id')
+        if not receptionist_id:
+            return Response({'error': 'receptionist_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        target = Receptionist.objects.filter(receptionist_id=receptionist_id).first()
+        if not target:
+            return Response({'error': 'Receptionist not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not Receptionist.objects.filter(is_admin=True).exists():
+            target.is_admin = True
+            target.save(update_fields=['is_admin'])
+
+        return Response({
+            'receptionist_id': target.receptionist_id,
+            'is_admin': target.is_admin,
+        })
+
     @action(detail=True, methods=['get'])
     def dashboard(self, request, pk=None):
         """
@@ -876,7 +960,10 @@ class ReceptionistViewSet(viewsets.ModelViewSet):
         from datetime import date, timedelta
         from collections import defaultdict
         
-        receptionist = self.get_object()
+        try:
+            receptionist = self.get_object()
+        except Exception:
+            receptionist = None
         today = date.today()
         
         # Get today's appointments (all doctors)
@@ -931,8 +1018,8 @@ class ReceptionistViewSet(viewsets.ModelViewSet):
         
         return Response({
             'receptionist': {
-                'id': receptionist.receptionist_id,
-                'name': receptionist.name,
+                'id': receptionist.receptionist_id if receptionist else None,
+                'name': receptionist.name if receptionist else 'Receptionist',
             },
             'stats': {
                 'total_appointments': total_today,
@@ -1020,7 +1107,21 @@ class InvoiceViewSet(viewsets.ModelViewSet):
         # Calculate totals
         subtotal = sum(item.get('quantity', 1) * float(item.get('unit_price', 0)) for item in items_data)
         discount_amount = float(request.data.get('discount_amount', 0))
-        insurance_coverage = float(request.data.get('insurance_coverage', 0))
+        insurance_coverage = float(request.data.get('insurance_coverage', 0) or 0)
+        insurance_provider = request.data.get('insurance_provider', '') or ''
+
+        # Auto-apply insurance from patient account if not provided
+        patient_id = request.data.get('patient')
+        if patient_id:
+            patient = Patient.objects.filter(patient_id=patient_id).select_related('insurance_company').first()
+            if patient and patient.has_insurance and patient.insurance_company:
+                if insurance_coverage <= 0:
+                    insurance_coverage = float(patient.insurance_company.discount_percent)
+                if not insurance_provider:
+                    insurance_provider = patient.insurance_company.name
+                request.data['insurance_provider'] = insurance_provider
+                request.data['insurance_coverage'] = insurance_coverage
+
         insurance_amount = max(0, (subtotal - discount_amount) * (insurance_coverage / 100))
         total_amount = max(0, subtotal - discount_amount - insurance_amount)
         
@@ -1062,7 +1163,19 @@ class InvoiceViewSet(viewsets.ModelViewSet):
             # Calculate totals from new items
             subtotal = sum(item.get('quantity', 1) * float(item.get('unit_price', 0)) for item in items_data)
             discount_amount = float(request.data.get('discount_amount', instance.discount_amount))
-            insurance_coverage = float(request.data.get('insurance_coverage', instance.insurance_coverage))
+            insurance_coverage = float(request.data.get('insurance_coverage', instance.insurance_coverage) or 0)
+            insurance_provider = request.data.get('insurance_provider', instance.insurance_provider) or ''
+
+            # Auto-apply insurance from patient account if not provided
+            patient = instance.patient
+            if patient and patient.has_insurance and patient.insurance_company:
+                if insurance_coverage <= 0:
+                    insurance_coverage = float(patient.insurance_company.discount_percent)
+                if not insurance_provider:
+                    insurance_provider = patient.insurance_company.name
+                request.data['insurance_provider'] = insurance_provider
+                request.data['insurance_coverage'] = insurance_coverage
+
             insurance_amount = max(0, (subtotal - discount_amount) * (insurance_coverage / 100))
             total_amount = max(0, subtotal - discount_amount - insurance_amount)
             
@@ -1268,6 +1381,80 @@ class SurgeryTypeViewSet(viewsets.ModelViewSet):
 class PatientSurgeryViewSet(viewsets.ModelViewSet):
     queryset = PatientSurgery.objects.all()
     serializer_class = PatientSurgerySerializer
+
+
+# -------------------------
+# Insurance Companies
+# -------------------------
+class InsuranceCompanyViewSet(viewsets.ModelViewSet):
+    queryset = InsuranceCompany.objects.all().order_by('name')
+    serializer_class = InsuranceCompanySerializer
+
+
+# -------------------------
+# Clinic Schedules
+# -------------------------
+class ClinicScheduleViewSet(viewsets.ModelViewSet):
+    queryset = ClinicSchedule.objects.select_related('doctor').all().order_by('doctor__name', '-updated_at')
+    serializer_class = ClinicScheduleSerializer
+
+    def get_queryset(self):
+        queryset = ClinicSchedule.objects.select_related('doctor').all()
+        doctor_id = self.request.query_params.get('doctor')
+        if doctor_id is not None:
+            if doctor_id in ('', 'default', 'null'):
+                queryset = queryset.filter(doctor__isnull=True)
+            else:
+                queryset = queryset.filter(doctor_id=doctor_id)
+        return queryset.order_by('doctor__name', '-updated_at')
+
+    @action(detail=False, methods=['post'])
+    def upsert(self, request):
+        doctor_id = request.data.get('doctor')
+        open_days = request.data.get('open_days', [1, 2, 3, 4, 5, 6])
+        open_time = request.data.get('open_time', '09:00')
+        close_time = request.data.get('close_time', '17:00')
+        slot_interval = int(request.data.get('slot_interval', 30) or 30)
+        slot_interval = max(5, slot_interval)
+
+        if doctor_id in (None, '', 'default', 'null'):
+            schedule, _ = ClinicSchedule.objects.get_or_create(doctor=None)
+        else:
+            doctor = Doctor.objects.filter(doctor_id=doctor_id).first()
+            if not doctor:
+                return Response({'error': 'Doctor not found.'}, status=status.HTTP_404_NOT_FOUND)
+            schedule, _ = ClinicSchedule.objects.get_or_create(doctor=doctor)
+
+        schedule.open_days = open_days
+        schedule.open_time = open_time
+        schedule.close_time = close_time
+        schedule.slot_interval = slot_interval
+        schedule.save()
+
+        serializer = self.get_serializer(schedule)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'])
+    def resolved(self, request):
+        doctor_id = request.query_params.get('doctor')
+        target = None
+        if doctor_id and doctor_id not in ('default', 'null'):
+            target = ClinicSchedule.objects.select_related('doctor').filter(doctor_id=doctor_id).first()
+
+        if not target:
+            target = ClinicSchedule.objects.select_related('doctor').filter(doctor__isnull=True).first()
+
+        if not target:
+            target = ClinicSchedule.objects.create(
+                doctor=None,
+                open_days=[1, 2, 3, 4, 5, 6],
+                open_time='09:00',
+                close_time='17:00',
+                slot_interval=30,
+            )
+
+        serializer = self.get_serializer(target)
+        return Response(serializer.data)
 
 
 # -------------------------

@@ -65,19 +65,14 @@ interface StatItemProps {
     color: string;
 }
 
-interface StatusFilterButtonProps {
-    label: string;
-    currentFilter: string;
-    setFilter: (filter: string) => void;
-    defaultColor: string;
-}
-
 // --- COLOR PALETTE ---
 const PRIMARY_DARK = '#9B084D'; 
 const PRIMARY_LIGHT = '#E80A7A'; 
 const SECONDARY_BG = '#F3E5F5'; 
 const PENDING_COLOR = '#E6A000'; 
 const CONFIRMED_COLOR = '#28A745'; 
+const COMPLETED_ROW_BG = '#E9F7EF';
+const CANCELLED_ROW_BG = '#FDEBEC';
 
 export default function DoctorDashboard() {
     const router = useRouter();
@@ -106,7 +101,6 @@ export default function DoctorDashboard() {
     const [selectedPatient, setSelectedPatient] = useState<AppointmentData | null>(null);
     const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterStatus, setFilterStatus] = useState('All');
     const [selectedDateAppointments, setSelectedDateAppointments] = useState<AppointmentData[]>([]);
 
     // Fetch dashboard data
@@ -206,13 +200,9 @@ export default function DoctorDashboard() {
         fetchDashboardData();
     }, [fetchDashboardData]);
 
-    // Filter today's appointments based on search and status
+    // Filter today's appointments based on search
     const filteredPatients = useMemo(() => {
         let results = todaysAppointments;
-
-        if (filterStatus !== 'All') {
-            results = results.filter(p => p.status === filterStatus);
-        }
 
         if (searchTerm) {
             const lowerCaseSearch = searchTerm.toLowerCase();
@@ -223,7 +213,29 @@ export default function DoctorDashboard() {
         }
 
         return results;
-    }, [todaysAppointments, searchTerm, filterStatus]);
+    }, [todaysAppointments, searchTerm]);
+
+    const parseAppointmentDateTime = (dateStr: string, timeStr: string) => {
+        const [timePart, meridiemRaw] = timeStr.split(' ');
+        const [rawHours, rawMinutes] = timePart.split(':').map((t) => parseInt(t, 10));
+        const meridiem = (meridiemRaw || '').toUpperCase();
+        let hours = rawHours;
+        if (meridiem === 'PM' && hours < 12) hours += 12;
+        if (meridiem === 'AM' && hours === 12) hours = 0;
+        const paddedHours = String(hours).padStart(2, '0');
+        const paddedMinutes = String(rawMinutes).padStart(2, '0');
+        return new Date(`${dateStr}T${paddedHours}:${paddedMinutes}:00`);
+    };
+
+    const isCompleted = (status: string) => status === 'Confirmed' || status === 'Completed';
+    const isCancelled = (status: string) => status === 'Canceled' || status === 'Cancelled';
+
+    const shouldAutoCancel = (dateStr: string, timeStr: string, status: string) => {
+        if (isCompleted(status) || isCancelled(status)) return false;
+        const apptDate = parseAppointmentDateTime(dateStr, timeStr);
+        const threeHoursLater = new Date(apptDate.getTime() + 3 * 60 * 60 * 1000);
+        return new Date() > threeHoursLater;
+    };
 
     // Calculate marked dates for calendar
     const markedDates = useMemo(() => {
@@ -347,69 +359,55 @@ export default function DoctorDashboard() {
                                 placeholderTextColor="#999"
                             />
                         </View>
-                        <StatusFilterButton
-                            label="All"
-                            currentFilter={filterStatus}
-                            setFilter={setFilterStatus}
-                            defaultColor={PRIMARY_DARK}
-                        />
-                        <StatusFilterButton
-                            label="Pending"
-                            currentFilter={filterStatus}
-                            setFilter={setFilterStatus}
-                            defaultColor={PENDING_COLOR}
-                        />
-                        <StatusFilterButton
-                            label="Confirmed"
-                            currentFilter={filterStatus}
-                            setFilter={setFilterStatus}
-                            defaultColor={CONFIRMED_COLOR}
-                        />
                     </View>
                     
                     <View style={styles.tableHeaderRow}>
                         <Text style={[styles.tableCellHeader, { flex: 2 }]}>Patient Name</Text>
                         <Text style={styles.tableCellHeader}>Service</Text>
                         <Text style={styles.tableCellHeader}>Time</Text>
-                        <Text style={[styles.tableCellHeader, { flex: 1.5 }]}>Status</Text>
                         <Text style={[styles.tableCellHeader, { flex: 0.5 }]}></Text>
                     </View>
 
                     {filteredPatients.length > 0 ? (
-                        filteredPatients.map((p) => (
-                            <TouchableOpacity
-                                key={p.id}
-                                style={[
-                                    styles.tableRow,
-                                    selectedPatient?.id === p.id ? styles.selectedRow : null,
-                                ]}
-                                onPress={() => {
-                                    setSelectedPatient(p);
-                                    router.push(`/doctor/patient-page/${p.patient_id}`);
-                                }}
-                            >
-                                <Text style={[styles.tableCell, { flex: 2, fontWeight: '500', color: PRIMARY_DARK }]}>{p.name}</Text>
-                                <Text style={styles.tableCell}>{p.service}</Text>
-                                <Text style={styles.tableCell}>{p.time}</Text>
-                                <View style={[styles.tableCell, { flex: 1.5 }]}>
-                                    <Text style={[
-                                        styles.statusBadge,
-                                        p.status === 'Confirmed' ? styles.statusConfirmed : styles.statusPending
-                                    ]}>
-                                        {p.status}
-                                    </Text>
-                                </View>
+                        filteredPatients.map((p) => {
+                            const todayStr = new Date().toISOString().split('T')[0];
+                            const autoCancelled = shouldAutoCancel(todayStr, p.time, p.status);
+                            const completed = isCompleted(p.status);
+                            const cancelled = isCancelled(p.status) || autoCancelled;
+                            const rowHighlightStyle = completed
+                                ? styles.rowCompleted
+                                : cancelled
+                                ? styles.rowCancelled
+                                : null;
+
+                            return (
                                 <TouchableOpacity
-                                    style={styles.openRecordButton}
-                                    onPress={(e) => {
-                                        e.stopPropagation(); 
+                                    key={p.id}
+                                    style={[
+                                        styles.tableRow,
+                                        selectedPatient?.id === p.id ? styles.selectedRow : null,
+                                        rowHighlightStyle,
+                                    ]}
+                                    onPress={() => {
+                                        setSelectedPatient(p);
                                         router.push(`/doctor/patient-page/${p.patient_id}`);
                                     }}
                                 >
-                                    <Ionicons name="arrow-forward-circle" size={24} color={PRIMARY_DARK} />
+                                    <Text style={[styles.tableCell, { flex: 2, fontWeight: '500', color: PRIMARY_DARK }]}>{p.name}</Text>
+                                    <Text style={styles.tableCell}>{p.service}</Text>
+                                    <Text style={styles.tableCell}>{p.time}</Text>
+                                    <TouchableOpacity
+                                        style={styles.openRecordButton}
+                                        onPress={(e) => {
+                                            e.stopPropagation(); 
+                                            router.push(`/doctor/patient-page/${p.patient_id}`);
+                                        }}
+                                    >
+                                        <Ionicons name="arrow-forward-circle" size={24} color={PRIMARY_DARK} />
+                                    </TouchableOpacity>
                                 </TouchableOpacity>
-                            </TouchableOpacity>
-                        ))
+                            );
+                        })
                     ) : (
                         <View style={styles.noResultsContainer}>
                             <Ionicons name="calendar-outline" size={32} color="#999" />
@@ -456,20 +454,31 @@ export default function DoctorDashboard() {
                 <ScrollView style={styles.appointmentsList}>
                     {selectedDateAppointments.length > 0 ? (
                         // FIX 3: Explicitly typing the app variable in map function
-                        selectedDateAppointments.map((app: AppointmentData) => ( 
-                            <TouchableOpacity key={app.id} style={styles.appointmentCard}
-                                onPress={() => router.push(`/doctor/patient-page/${app.patient_id}`)}
-                            >
-                                <View style={styles.timeBadge}>
-                                    <Text style={styles.timeText}>{app.time}</Text>
-                                </View>
-                                <View style={styles.appointmentDetails}>
-                                    <Text style={styles.appointmentName}>{app.name}</Text>
-                                    <Text style={styles.appointmentService}>{app.service}</Text>
-                                </View>
-                                <Ionicons name="chevron-forward-outline" size={20} color={PRIMARY_DARK} />
-                            </TouchableOpacity>
-                        ))
+                        selectedDateAppointments.map((app: AppointmentData) => { 
+                            const autoCancelled = shouldAutoCancel(selectedDate, app.time, app.status);
+                            const completed = isCompleted(app.status);
+                            const cancelled = isCancelled(app.status) || autoCancelled;
+                            const cardHighlightStyle = completed
+                                ? styles.cardCompleted
+                                : cancelled
+                                ? styles.cardCancelled
+                                : null;
+
+                            return (
+                                <TouchableOpacity key={app.id} style={[styles.appointmentCard, cardHighlightStyle]}
+                                    onPress={() => router.push(`/doctor/patient-page/${app.patient_id}`)}
+                                >
+                                    <View style={styles.timeBadge}>
+                                        <Text style={styles.timeText}>{app.time}</Text>
+                                    </View>
+                                    <View style={styles.appointmentDetails}>
+                                        <Text style={styles.appointmentName}>{app.name}</Text>
+                                        <Text style={styles.appointmentService}>{app.service}</Text>
+                                    </View>
+                                    <Ionicons name="chevron-forward-outline" size={20} color={PRIMARY_DARK} />
+                                </TouchableOpacity>
+                            );
+                        })
                     ) : (
                         <View style={styles.noAppointmentsContainer}>
                             <Ionicons name="information-circle-outline" size={20} color="#666" />
@@ -491,23 +500,6 @@ const StatItem: React.FC<StatItemProps> = ({ icon, label, value, color }) => (
         <Text style={styles.statItemLabel}>{label}</Text>
     </View>
 );
-
-// Reusable Filter Button Component
-// FIX 5: Apply StatusFilterButtonProps type
-const StatusFilterButton: React.FC<StatusFilterButtonProps> = ({ label, currentFilter, setFilter, defaultColor }) => {
-    const isSelected = currentFilter === label;
-    const color = isSelected ? '#fff' : defaultColor;
-    const backgroundColor = isSelected ? defaultColor : '#fff';
-
-    return (
-        <TouchableOpacity 
-            style={[styles.filterButton, { backgroundColor, borderColor: defaultColor }]}
-            onPress={() => setFilter(label)}
-        >
-            <Text style={[styles.filterButtonText, { color }]}>{label}</Text>
-        </TouchableOpacity>
-    );
-};
 
 // ... (Styles remain the same)
 const styles = StyleSheet.create({
@@ -589,6 +581,8 @@ const styles = StyleSheet.create({
   tableCellHeader: { flex: 1, textAlign: 'center', fontWeight: 'bold', color: '#444', fontSize: 14 },
   tableRow: { flexDirection: 'row', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F0F0F0', alignItems: 'center', borderRadius: 8, paddingHorizontal: 10 },
   selectedRow: { backgroundColor: SECONDARY_BG, borderColor: PRIMARY_LIGHT, borderWidth: 1 }, 
+  rowCompleted: { backgroundColor: COMPLETED_ROW_BG },
+  rowCancelled: { backgroundColor: CANCELLED_ROW_BG }, 
   tableCell: { flex: 1, textAlign: 'center', color: '#333' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 16, color: '#fff', fontWeight: 'bold', textAlign: 'center', minWidth: 90, fontSize: 12 },
   statusConfirmed: { backgroundColor: CONFIRMED_COLOR }, 
@@ -605,6 +599,8 @@ const styles = StyleSheet.create({
   dateAppointmentsDate: { fontSize: 16, fontWeight: 'bold', color: PRIMARY_DARK, marginLeft: 5 },
   appointmentsList: { maxHeight: 350 },
   appointmentCard: { padding: 15, marginVertical: 6, backgroundColor: '#FAFAFA', borderRadius: 10, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: '#EBEBEB' },
+  cardCompleted: { backgroundColor: COMPLETED_ROW_BG },
+  cardCancelled: { backgroundColor: CANCELLED_ROW_BG },
   timeBadge: { backgroundColor: PRIMARY_DARK, padding: 8, borderRadius: 8, marginRight: 15, minWidth: 75, alignItems: 'center' },
   timeText: { color: '#fff', fontWeight: 'bold' },
   appointmentDetails: { flex: 1 },
@@ -618,3 +614,4 @@ const styles = StyleSheet.create({
   errorText: { marginTop: 15, fontSize: 16, color: '#e74c3c', textAlign: 'center', paddingHorizontal: 20 },
   retryButton: { marginTop: 20, backgroundColor: PRIMARY_LIGHT, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 10 },
   retryButtonText: { color: '#fff', fontWeight: '600', fontSize: 16 },});
+

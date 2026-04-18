@@ -1,14 +1,13 @@
 import React, { useState, useCallback } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl, Alert } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, RefreshControl } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { Ionicons } from '@expo/vector-icons';
-import { getPatients, deletePatient } from '../../src/api/receptionistApi';
+import { getPatients } from '../../src/api/receptionistApi';
 
 // --- COLOR PALETTE ---
 const PRIMARY_DARK = "#9B084D";
 const PRIMARY_LIGHT = "#E80A7A";
 const SUCCESS_COLOR = "#28A745";
-const DANGER_COLOR = "#DC3545";
 
 interface Patient {
   patient_id: number;
@@ -89,37 +88,6 @@ export default function PatientsDirectory() {
       month: 'short', 
       day: 'numeric' 
     });
-  };
-
-  // Handle delete patient
-  const handleDeletePatient = (patient: Patient) => {
-    Alert.alert(
-      'Delete Patient',
-      `Are you sure you want to delete ${patient.name}? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const result = await deletePatient(patient.patient_id);
-              if (result.success) {
-                Alert.alert('Success', 'Patient deleted successfully');
-                if (selectedPatient?.patient_id === patient.patient_id) {
-                  setSelectedPatient(null);
-                }
-                fetchPatients();
-              } else {
-                Alert.alert('Error', result.error || 'Failed to delete patient');
-              }
-            } catch {
-              Alert.alert('Error', 'Failed to delete patient');
-            }
-          }
-        }
-      ]
-    );
   };
 
   // Loading state
@@ -308,13 +276,6 @@ export default function PatientsDirectory() {
               <Text style={styles.buttonText}>Edit Patient</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => handleDeletePatient(selectedPatient)}
-            >
-              <Ionicons name="trash-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
-              <Text style={styles.buttonText}>Delete Patient</Text>
-            </TouchableOpacity>
           </>
         ) : (
           <View style={styles.noPatientContainer}>
@@ -583,15 +544,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 10,
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    backgroundColor: DANGER_COLOR,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   buttonText: {
     color: '#fff',

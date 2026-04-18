@@ -4,6 +4,7 @@ from .models import (
     Invoice, InvoiceItem, MedicalRecord, Medication, Prescription, PrescriptionMedication,
     TreatmentPlan, TreatmentSession, Allergy, PatientAllergy, InventoryItem, StockTransaction,
     LaserSession, MedicalCondition, PatientMedicalCondition, SurgeryType, PatientSurgery
+    , InsuranceCompany, ClinicSchedule
 )
 from django.contrib.auth.models import User
 
@@ -15,8 +16,21 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class PatientSerializer(serializers.ModelSerializer):
+    insurance_company_name = serializers.CharField(source='insurance_company.name', read_only=True)
+    insurance_discount_percent = serializers.DecimalField(source='insurance_company.discount_percent', max_digits=5, decimal_places=2, read_only=True)
     class Meta:
         model = Patient
+        fields = [
+            'patient_id', 'name', 'age', 'gender', 'phone', 'email', 'notes',
+            'medical_history', 'surgeries', 'created_at',
+            'has_insurance', 'insurance_company', 'insurance_member_id',
+            'insurance_company_name', 'insurance_discount_percent',
+        ]
+
+
+class InsuranceCompanySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InsuranceCompany
         fields = '__all__'
 
 
@@ -28,9 +42,18 @@ class DoctorSerializer(serializers.ModelSerializer):
 
 class ReceptionistSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     class Meta:
         model = Receptionist
         fields = '__all__'
+
+
+class ClinicScheduleSerializer(serializers.ModelSerializer):
+    doctor_name = serializers.CharField(source='doctor.name', read_only=True)
+
+    class Meta:
+        model = ClinicSchedule
+        fields = ['id', 'doctor', 'doctor_name', 'open_days', 'open_time', 'close_time', 'slot_interval', 'updated_at']
 
 
 class ServiceSerializer(serializers.ModelSerializer):

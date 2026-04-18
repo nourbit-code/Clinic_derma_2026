@@ -1,6 +1,5 @@
 import { Feather, Ionicons } from "@expo/vector-icons";
 import { Picker } from "@react-native-picker/picker";
-import * as FileSystem from "expo-file-system";
 import * as Print from "expo-print";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -31,6 +30,11 @@ import {
 // NOTE: You should ideally fix the Patient type definition in your actual PatientContext.ts file.
 interface EnhancedPatient extends Patient {
     id: number;
+    has_insurance?: boolean;
+    insurance_company?: number | null;
+    insurance_company_name?: string;
+    insurance_discount_percent?: number;
+    insurance_member_id?: string;
 }
 
 type ServiceItem = {
@@ -111,8 +115,6 @@ export default function Payments() {
   const [insuranceCoverage, setInsuranceCoverage] = useState<string>("0"); // percent as string for TextInput
   // Snapshot to preserve patient personal data while editing an invoice
   const [originalPatientSnapshot, setOriginalPatientSnapshot] = useState<Partial<EnhancedPatient> | null>(null);
-  // Modal for Print/Download export options
-  const [showExportModal, setShowExportModal] = useState(false);
   // Modal for invoice preview before printing
   const [showPrintPreview, setShowPrintPreview] = useState(false);
 
@@ -121,6 +123,8 @@ export default function Payments() {
 
   // --- API Data & Loading States ---
   const [historySearch, setHistorySearch] = useState('');
+  const [historySort, setHistorySort] = useState<'Newest' | 'Oldest' | 'AmountHigh' | 'AmountLow' | 'Name'>('Newest');
+  const [showHistorySortModal, setShowHistorySortModal] = useState(false);
   const [invoiceHistory, setInvoiceHistory] = useState<InvoiceItem[]>([]); 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -177,6 +181,11 @@ export default function Payments() {
           phone: p.phone || '',
           age: p.age || 0,
           gender: p.gender || '',
+          has_insurance: !!p.has_insurance,
+          insurance_company: p.insurance_company ?? null,
+          insurance_company_name: p.insurance_company_name || '',
+          insurance_discount_percent: parseFloat(p.insurance_discount_percent) || 0,
+          insurance_member_id: p.insurance_member_id || '',
         }));
         setPatients(transformedPatients);
       }
@@ -240,13 +249,38 @@ export default function Payments() {
   }, []); 
   
   const filteredHistory = useMemo(() => {
-    if (!historySearch) return invoiceHistory;
-    const lowerSearch = historySearch.toLowerCase();
-    return invoiceHistory.filter(inv => 
-        inv.invoiceId.toLowerCase().includes(lowerSearch) ||
-        inv.patientName.toLowerCase().includes(lowerSearch)
-    );
-  }, [historySearch, invoiceHistory]);
+    const lowerSearch = historySearch.trim().toLowerCase();
+    const filtered = invoiceHistory.filter(inv => {
+      const matchesSearch = !lowerSearch
+        || inv.invoiceId.toLowerCase().includes(lowerSearch)
+        || inv.patientName.toLowerCase().includes(lowerSearch);
+      return matchesSearch;
+    });
+
+    const dateValue = (d: string) => {
+      const parsed = Date.parse(d);
+      return Number.isNaN(parsed) ? 0 : parsed;
+    };
+
+    const sorted = [...filtered].sort((a, b) => {
+      switch (historySort) {
+        case 'Newest':
+          return dateValue(b.date) - dateValue(a.date);
+        case 'Oldest':
+          return dateValue(a.date) - dateValue(b.date);
+        case 'AmountHigh':
+          return b.totalAmount - a.totalAmount;
+        case 'AmountLow':
+          return a.totalAmount - b.totalAmount;
+        case 'Name':
+          return a.patientName.localeCompare(b.patientName);
+        default:
+          return 0;
+      }
+    });
+
+    return sorted;
+  }, [historySearch, historySort, invoiceHistory]);
 
 
   // --- CALCULATIONS ---
@@ -287,8 +321,10 @@ export default function Payments() {
     setServices(defaultNewServices);
     setDiscountAmount("0");
     // ADDED FOR INSURANCE:
-    setInsuranceProvider('');
-    setInsuranceCoverage("0");
+    const insuranceName = patient.has_insurance ? (patient.insurance_company_name || '') : '';
+    const insurancePercent = patient.has_insurance ? String(patient.insurance_discount_percent || 0) : '0';
+    setInsuranceProvider(insuranceName);
+    setInsuranceCoverage(insurancePercent);
     setSearch(""); 
     // New invoice selection, clear any previous snapshot
     setOriginalPatientSnapshot(null);
@@ -514,55 +550,59 @@ export default function Payments() {
       <html>
       <head>
         <style>
-            body { font-family: Arial, sans-serif; padding: 20px; color: #333; }
-            h2 { color: ${PRIMARY_DARK}; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
-            table { width: 100%; border-collapse: collapse; margin: 15px 0; }
-            th, td { border: 1px solid #eee; padding: 8px; text-align: right; }
+            @page { margin: 12mm; }
+            body { font-family: Arial, sans-serif; color: #333; font-size: 12px; }
+            .invoice { max-width: 520px; margin: 0 auto; }
+            h2 { color: ${PRIMARY_DARK}; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 0 0 8px 0; font-size: 18px; }
+            .meta { margin: 4px 0; }
+            table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+            th, td { border: 1px solid #eee; padding: 6px; text-align: right; }
             th { background-color: ${GRAY_BG}; color: #555; text-align: center; }
             .summary-row td { border: none; font-weight: bold; }
             .total-row td { background-color: ${PRIMARY_DARK}; color: ${WHITE}; }
-            .status { background-color: ${paymentStatus === 'Paid' ? SUCCESS_COLOR : ERROR_COLOR}; color: ${WHITE}; padding: 5px; border-radius: 4px; display: inline-block; }
+            
         </style>
       </head>
         <body>
-          <h2>Invoice #${displayInvoiceId}</h2>
-          <p><strong>Patient ID:</strong> ${selectedPatient.id}</p>
-          <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-          <p><strong>Patient:</strong> ${selectedPatient.name} (${selectedPatient.phone})</p>
-          <p><strong>Status:</strong> <span class="status">${paymentStatus}</span></p>
+          <div class="invoice">
+            <h2>Invoice #${displayInvoiceId}</h2>
+            <p class="meta"><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+            <p class="meta"><strong>Patient:</strong> ${selectedPatient.name} (${selectedPatient.phone})</p>
+            <p class="meta"><strong>Patient ID:</strong> ${selectedPatient.id}</p>
 
-          <table>
-            <thead>
-              <tr>
-                <th style="text-align: left;">Description</th><th>Qty</th><th>Unit Price</th><th>Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${servicesRows}
-              <tr class="summary-row">
-                <td colspan="3">Subtotal</td>
-                <td>L.E ${subtotal.toFixed(2)}</td>
-              </tr>
-              <tr class="summary-row">
-                <td colspan="3">Discount</td>
-                <td>L.E ${numericDiscountLocal.toFixed(2)}</td>
-              </tr>
-              <!-- ADDED FOR INSURANCE -->
-              <tr class="summary-row">
-                <td colspan="3">Insurance Provider</td>
-                <td>${insuranceProvider || 'None'}</td>
-              </tr>
-              <tr class="summary-row">
-                <td colspan="3">Insurance Coverage (${insurancePercentLocal}%)</td>
-                <td>L.E ${insuranceAmountLocal.toFixed(2)}</td>
-              </tr>
-              <tr class="total-row">
-                <td colspan="3">Patient Pays</td>
-                <td>L.E ${patientPaysLocal.toFixed(2)}</td>
-              </tr>
-            </tbody>
-          </table>
-          <p><strong>Payment Method:</strong> ${paymentMethod}</p>
+            <table>
+              <thead>
+                <tr>
+                  <th style="text-align: left;">Description</th><th>Qty</th><th>Unit Price</th><th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${servicesRows}
+                <tr class="summary-row">
+                  <td colspan="3">Subtotal</td>
+                  <td>L.E ${subtotal.toFixed(2)}</td>
+                </tr>
+                <tr class="summary-row">
+                  <td colspan="3">Discount</td>
+                  <td>L.E ${numericDiscountLocal.toFixed(2)}</td>
+                </tr>
+                <!-- ADDED FOR INSURANCE -->
+                <tr class="summary-row">
+                  <td colspan="3">Insurance Provider</td>
+                  <td>${insuranceProvider || 'None'}</td>
+                </tr>
+                <tr class="summary-row">
+                  <td colspan="3">Insurance Coverage (${insurancePercentLocal}%)</td>
+                  <td>L.E ${insuranceAmountLocal.toFixed(2)}</td>
+                </tr>
+                <tr class="total-row">
+                  <td colspan="3">Patient Pays</td>
+                  <td>L.E ${patientPaysLocal.toFixed(2)}</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="meta"><strong>Payment Method:</strong> ${paymentMethod}</p>
+          </div>
         </body>
       </html>
     `;
@@ -589,70 +629,14 @@ export default function Payments() {
     setShowPrintPreview(true);
   };
 
-  const handleDownloadPDF = async () => {
-    if (!isPatientSelected) {
-        Alert.alert("Action Required", "Please select or create an invoice before downloading a PDF.");
-        return;
-    }
-
-    try {
-        const html = generateInvoiceHTML();
-        const { uri } = await Print.printToFileAsync({ html });
-        const invoiceIdStr = currentInvoiceId ? `INV-${String(currentInvoiceId).padStart(5, '0')}` : new Date().getTime();
-        const fileName = `${selectedPatient.name.replace(/\s/g, '_')}_invoice_${invoiceIdStr}.pdf`;
-        
-        if (Platform.OS === 'android' && (FileSystem as any).StorageAccessFramework) {
-             const permissions = await (FileSystem as any).StorageAccessFramework.requestDirectoryPermissionsAsync();
-             if (permissions.granted) {
-                 const fileUri = await (FileSystem as any).StorageAccessFramework.createFileAsync(
-                     permissions.directoryUri, 
-                     fileName, 
-                     'application/pdf'
-                 );
-                 await FileSystem.copyAsync({ from: uri, to: fileUri });
-                 Alert.alert("Success", `PDF saved to your Downloads folder!`);
-             } else {
-                 Alert.alert("Permission Denied", "Cannot save file without storage permission.");
-             }
-        } else {
-             const fileUri = `${(FileSystem as any).documentDirectory}${fileName}`;
-             await FileSystem.copyAsync({ from: uri, to: fileUri });
-             Alert.alert("Success", `PDF prepared. Check your device's documents or share menu.`);
-        }
-    } catch (error) {
-        console.error("PDF Download Error:", error);
-        Alert.alert("Error", "Could not generate or save PDF.");
-    }
-  };
-
-  // New: Combined Print or Download prompt for the current invoice (no history)
+  // Print prompt for the current invoice (no history)
   const handlePrintOrDownload = () => {
     if (!isPatientSelected) {
       Alert.alert("Action Required", "Please select or create an invoice before exporting.");
       return;
     }
-    // Open custom modal instead of Alert for better async handling
-    setShowExportModal(true);
-  };
-
-  // Helper for Payment History Status Badge
-  const getStatusBadgeStyle = (status: PaymentStatus) => {
-    switch (status) {
-        case 'Paid': return { backgroundColor: SUCCESS_COLOR };
-        case 'Not Paid': return { backgroundColor: ERROR_COLOR };
-        case 'Canceled': return { backgroundColor: WARNING_COLOR };
-        default: return { backgroundColor: TEXT_MEDIUM };
-    }
-  };
-  
-  // Helper for Status Text styling
-  const getStatusTextStyle = (status: PaymentStatus) => {
-    switch (status) {
-        case 'Paid': return styles.paid;
-        case 'Not Paid': return styles.notPaid;
-        case 'Canceled': return styles.canceled;
-        default: return styles.notPaid;
-    }
+    // Open preview modal instead of printing directly
+    setShowPrintPreview(true);
   };
 
   // --- JSX STRUCTURE ---
@@ -806,55 +790,6 @@ export default function Payments() {
             </View>
           </Modal>
 
-          {/* Export (Print/Download) Modal */}
-          <Modal visible={showExportModal} transparent animationType="fade" onRequestClose={() => setShowExportModal(false)}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContent}>
-                <Text style={styles.modalTitle}>Export Invoice</Text>
-                <Text style={styles.modalSubtitle}>Choose how to export the invoice</Text>
-
-                <TouchableOpacity
-                  style={[styles.exportOptionButton, { marginBottom: 12 }]}
-                  onPress={() => {
-                    setShowExportModal(false);
-                    handlePrint();
-                  }}
-                >
-                  <Ionicons name="print-outline" size={24} color={PRIMARY_DARK} style={{ marginRight: 12 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.exportOptionTitle}>Print Invoice</Text>
-                    <Text style={styles.exportOptionDesc}>Print to a connected printer</Text>
-                  </View>
-                  <Ionicons name="chevron-forward-outline" size={20} color={TEXT_MEDIUM} />
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.exportOptionButton}
-                  onPress={() => {
-                    setShowExportModal(false);
-                    handleDownloadPDF();
-                  }}
-                >
-                  <Ionicons name="download-outline" size={24} color={PRIMARY_DARK} style={{ marginRight: 12 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.exportOptionTitle}>Download PDF</Text>
-                    <Text style={styles.exportOptionDesc}>Save invoice as PDF file</Text>
-                  </View>
-                  <Ionicons name="chevron-forward-outline" size={20} color={TEXT_MEDIUM} />
-                </TouchableOpacity>
-
-                <View style={styles.modalButtonContainer}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.cancelButton]}
-                    onPress={() => setShowExportModal(false)}
-                  >
-                    <Text style={styles.cancelButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          </Modal>
-
           {/* Invoice Preview Modal (for printing) */}
           <Modal visible={showPrintPreview} transparent animationType="slide" onRequestClose={() => setShowPrintPreview(false)}>
             <View style={styles.previewContainer}>
@@ -922,10 +857,6 @@ export default function Payments() {
                   {/* Payment Details */}
                   <View style={styles.previewPaymentBox}>
                     <Text style={styles.previewLabel}>Payment Details</Text>
-                    <View style={styles.previewDetailRow}>
-                      <Text style={styles.previewDetailLabel}>Status:</Text>
-                      <Text style={[styles.previewDetailValue, getStatusTextStyle(paymentStatus)]}>{paymentStatus}</Text>
-                    </View>
                     <View style={styles.previewDetailRow}>
                       <Text style={styles.previewDetailLabel}>Method:</Text>
                       <Text style={styles.previewDetailValue}>{paymentMethod}</Text>
@@ -1033,25 +964,6 @@ export default function Payments() {
                 <>
                     <Text style={[styles.sectionTitleSmall, { marginTop: 20 }]}>Payment Processing</Text>
 
-                    {/* #2: Payment Status Picker (Editable) */}
-                    <Text style={styles.infoLabel}>Payment Status</Text>
-                    <View style={styles.dropdownBox}>
-                        <Picker
-                            selectedValue={paymentStatus}
-                            onValueChange={(value) => setPaymentStatus(value as PaymentStatus)}
-                            style={styles.picker}
-                            dropdownIconColor={PRIMARY_DARK}
-                        >
-                            <Picker.Item label="Pending Payment" value="Not Paid" />
-                            <Picker.Item label="Paid - Finalized" value="Paid" />
-                            <Picker.Item label="Canceled" value="Canceled" />
-                        </Picker>
-                    </View>
-                    <Text style={[getStatusTextStyle(paymentStatus), { marginTop: 5 }]}>
-                       Current: {paymentStatus === "Paid" ? "✅ Paid" : paymentStatus === "Canceled" ? "🚫 Canceled" : "🟡 Pending"}
-                    </Text>
-
-
                     <Text style={styles.infoLabel}>Payment Method</Text>
                     <View style={styles.dropdownBox}>
                         <Picker
@@ -1059,7 +971,7 @@ export default function Payments() {
                             onValueChange={(value) => setPaymentMethod(value as PaymentMethod)}
                             style={styles.picker}
                             dropdownIconColor={PRIMARY_DARK}
-                            enabled={paymentStatus !== 'Paid'}
+                            enabled={true}
                         >
                             <Picker.Item label="Cash" value="Cash" />
                             <Picker.Item label="Visa / Card" value="Visa" />
@@ -1068,35 +980,20 @@ export default function Payments() {
                         </Picker>
                     </View>
 
-                    {/* ADDED FOR INSURANCE: Insurance Provider Picker */}
-                    <Text style={styles.infoLabel}>Insurance Provider</Text>
-                    <View style={styles.dropdownBox}>
-                        <Picker
-                            selectedValue={insuranceProvider}
-                            onValueChange={(value) => setInsuranceProvider(value)}
-                            style={styles.picker}
-                            dropdownIconColor={PRIMARY_DARK}
-                        >
-                            <Picker.Item label="None" value="" />
-                            <Picker.Item label="AXA Insurance" value="AXA Insurance" />
-                            <Picker.Item label="MedNet" value="MedNet" />
-                            <Picker.Item label="CarePlus" value="CarePlus" />
-                        </Picker>
+                    {/* Insurance (auto from patient profile) */}
+                    <Text style={styles.infoLabel}>Insurance</Text>
+                    <View style={styles.insuranceBox}>
+                        <Text style={styles.insuranceText}>
+                            {insuranceProvider ? insuranceProvider : 'None'}
+                        </Text>
+                        {insuranceProvider ? (
+                            <Text style={styles.insuranceSubText}>
+                                Coverage: {insurancePercent}% 
+                            </Text>
+                        ) : (
+                            <Text style={styles.insuranceSubText}>Coverage: 0%</Text>
+                        )}
                     </View>
-
-                    {/* ADDED FOR INSURANCE: Coverage input */}
-                    {insuranceProvider !== '' && (
-                        <>
-                            <Text style={styles.infoLabel}>Insurance Coverage (%)</Text>
-                            <TextInput
-                                style={styles.discountInput}
-                                value={insuranceCoverage}
-                                onChangeText={setInsuranceCoverage}
-                                placeholder="0"
-                                keyboardType="numeric"
-                            />
-                        </>
-                    )}
 
                     {/* #3: Save Changes Button */}
                     <TouchableOpacity 
@@ -1155,11 +1052,11 @@ export default function Payments() {
                         </TouchableOpacity>
                     </View>
 
-                    {/* Print / Download Button (single entry: prompts Print or Download for current invoice only) */}
+                    {/* Print Button (single entry: prompts Print for current invoice only) */}
                     <View style={styles.bottomButtons}>
                       <TouchableOpacity style={styles.iconButton} onPress={handlePrintOrDownload}>
                         <Ionicons name="print-outline" size={20} color={PRIMARY_DARK} />
-                        <Text style={styles.iconText}>Print / Download</Text>
+                        <Text style={styles.iconText}>Print</Text>
                       </TouchableOpacity>
                     </View>
                 </>
@@ -1171,15 +1068,29 @@ export default function Payments() {
       <View style={[styles.historyContainer, styles.cardShadow]}>
         <Text style={styles.sectionTitle}><Ionicons name="time-outline" size={18} color={PRIMARY_DARK} /> Recent Payment History</Text>
         
-        {/* History Search Bar */}
-        <View style={styles.historySearchBox}>
-            <Feather name="search" size={18} color={TEXT_MEDIUM} />
-            <TextInput
-            placeholder="Search invoice ID or patient name..."
-            style={styles.historyInput}
-            value={historySearch}
-            onChangeText={setHistorySearch}
-            />
+        {/* History Search + Actions */}
+        <View style={styles.historySearchRow}>
+          <View style={styles.historySearchBox}>
+              <Feather name="search" size={18} color={TEXT_MEDIUM} />
+              <TextInput
+              placeholder="Search invoice ID or patient name..."
+              style={styles.historyInput}
+              value={historySearch}
+              onChangeText={setHistorySearch}
+              />
+          </View>
+
+          <View style={styles.historyControlsRow}>
+            <TouchableOpacity
+              style={styles.historyActionButton}
+              onPress={() => setShowHistorySortModal(true)}
+            >
+              <Ionicons name="swap-vertical-outline" size={16} color={PRIMARY_DARK} />
+              <Text style={styles.historyActionText}>
+                Sort: {historySort === 'AmountHigh' ? 'Amount ↓' : historySort === 'AmountLow' ? 'Amount ↑' : historySort}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* History Table Header */}
@@ -1189,7 +1100,6 @@ export default function Payments() {
             <Text style={[styles.historyTableText, styles.colHistoryDate]}>DATE</Text>
             <Text style={[styles.historyTableText, styles.colHistoryAmount]}>TOTAL</Text>
             <Text style={[styles.historyTableText, styles.colHistoryMethod]}>METHOD</Text>
-            <Text style={[styles.historyTableText, styles.colHistoryStatus]}>STATUS</Text>
             <View style={styles.colHistoryActionPlaceholder} />
         </View>
 
@@ -1202,12 +1112,6 @@ export default function Payments() {
                 <Text style={[styles.historyRowText, styles.colHistoryAmount, { fontWeight: '700' }]}>L.E {item.totalAmount.toFixed(2)}</Text>
                 <Text style={[styles.historyRowText, styles.colHistoryMethod]}>{item.method}</Text>
                 
-                <View style={[styles.colHistoryStatus, {alignItems: 'center'}]}>
-                    <View style={[styles.statusBadge, getStatusBadgeStyle(item.status)]}>
-                        <Text style={styles.statusBadgeText}>{item.status}</Text>
-                    </View>
-                </View>
-
                 {/* Edit Button (Eye Icon changed to Create/Edit icon) */}
                 <TouchableOpacity 
                     style={styles.colHistoryAction}
@@ -1222,6 +1126,47 @@ export default function Payments() {
             <View style={{padding: 20, alignItems: 'center'}}><Text style={styles.noResultsText}>No payments found matching criteria.</Text></View>
         )}
       </View>
+
+      {/* History Sort Modal */}
+      <Modal visible={showHistorySortModal} transparent animationType="fade" onRequestClose={() => setShowHistorySortModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Sort History</Text>
+            <Text style={styles.modalSubtitle}>Choose a sort order</Text>
+
+            {(['Newest', 'Oldest', 'AmountHigh', 'AmountLow', 'Name'] as const).map((sort) => (
+              <TouchableOpacity
+                key={sort}
+                style={[
+                  styles.optionRow,
+                  historySort === sort && styles.optionRowActive,
+                ]}
+                onPress={() => {
+                  setHistorySort(sort);
+                  setShowHistorySortModal(false);
+                }}
+              >
+                <Text style={[
+                  styles.optionText,
+                  historySort === sort && styles.optionTextActive,
+                ]}>
+                  {sort === 'AmountHigh' ? 'Amount (High → Low)' : sort === 'AmountLow' ? 'Amount (Low → High)' : sort}
+                </Text>
+                {historySort === sort && <Ionicons name="checkmark" size={18} color={WHITE} />}
+              </TouchableOpacity>
+            ))}
+
+            <View style={styles.modalButtonContainer}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setShowHistorySortModal(false)}
+              >
+                <Text style={styles.cancelButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -1415,6 +1360,23 @@ const styles = StyleSheet.create({
   
   // --- Payment Details ---
   infoLabel: { fontSize: 14, fontWeight: "600", color: PRIMARY_DARK, marginTop: 15, marginBottom: 5 },
+  insuranceBox: {
+    borderWidth: 1,
+    borderColor: BORDER_LIGHT,
+    borderRadius: 8,
+    backgroundColor: GRAY_BG,
+    padding: 10,
+  },
+  insuranceText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: TEXT_DARK,
+  },
+  insuranceSubText: {
+    fontSize: 12,
+    color: TEXT_MEDIUM,
+    marginTop: 4,
+  },
   notPaid: { backgroundColor: '#FCE8EF', color: ERROR_COLOR, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignSelf: "flex-start", fontWeight: '700' },
   paid: { backgroundColor: '#E8F9EC', color: SUCCESS_COLOR, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignSelf: "flex-start", fontWeight: '700' },
   canceled: { backgroundColor: '#FEF9E7', color: WARNING_COLOR, paddingVertical: 8, paddingHorizontal: 12, borderRadius: 8, alignSelf: "flex-start", fontWeight: '700' },
@@ -1474,6 +1436,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
   },
+  historySearchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 12,
+    flexWrap: 'wrap',
+  },
   historySearchBox: {
     flexDirection: "row",
     alignItems: "center",
@@ -1481,8 +1450,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     borderRadius: 8,
     height: 40,
-    marginBottom: 15,
-    width: '50%',
+    flex: 1,
+    minWidth: 220,
+  },
+  historyControlsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  historyActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: GRAY_BG,
+    borderWidth: 1,
+    borderColor: BORDER_LIGHT,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+  },
+  historyActionText: {
+    marginLeft: 6,
+    fontSize: 12,
+    color: TEXT_MEDIUM,
+    fontWeight: '600',
   },
   historyInput: { marginLeft: 10, flex: 1, color: TEXT_DARK, fontSize: 14 },
   historyTableHeader: {
@@ -1520,21 +1510,8 @@ const styles = StyleSheet.create({
   colHistoryDate: { flex: 1.5 },
   colHistoryAmount: { flex: 1.5, textAlign: 'right', paddingRight: 10 },
   colHistoryMethod: { flex: 1.5 },
-  colHistoryStatus: { flex: 1.5 },
   colHistoryActionPlaceholder: { width: 40 },
   colHistoryAction: { width: 40, alignItems: 'center' },
-  statusBadge: {
-    paddingVertical: 4,
-    paddingHorizontal: 8,
-    borderRadius: 4,
-    minWidth: 80,
-    alignItems: 'center',
-  },
-  statusBadgeText: {
-    fontWeight: '600',
-    fontSize: 12,
-    color: WHITE,
-  },
 
   // --- Service Selection Modal ---
   modalOverlay: {
@@ -1560,6 +1537,30 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: TEXT_MEDIUM,
     marginBottom: 20,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: BORDER_LIGHT,
+    backgroundColor: GRAY_BG,
+  },
+  optionRowActive: {
+    backgroundColor: PRIMARY_DARK,
+    borderColor: PRIMARY_DARK,
+  },
+  optionText: {
+    fontSize: 14,
+    color: TEXT_DARK,
+    fontWeight: '600',
+  },
+  optionTextActive: {
+    color: WHITE,
   },
   serviceCheckbox: {
     flexDirection: 'row',

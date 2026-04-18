@@ -129,8 +129,8 @@ If you see CORS errors in the browser console:
 
 ### Connection Errors
 If the frontend can't connect to the backend:
-- Verify the backend is running on http://127.0.0.1:8000
-- Check that the `API_BASE_URL` in `authApi.js` matches your backend URL
+- Verify  is running on http://127.0.0.1:8000
+- Check that the `API_BASE_URL` in `authApi.js` matthe backendches your backend URL
 - Try accessing http://127.0.0.1:8000/api/doctors/ in your browser to test the API
 
 ### Database Issues

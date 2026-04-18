@@ -20,6 +20,8 @@ router.register(r'medical-conditions', views.MedicalConditionViewSet)
 router.register(r'patient-medical-conditions', views.PatientMedicalConditionViewSet)
 router.register(r'surgery-types', views.SurgeryTypeViewSet)
 router.register(r'patient-surgeries', views.PatientSurgeryViewSet)
+router.register(r'insurance-companies', views.InsuranceCompanyViewSet)
+router.register(r'clinic-schedules', views.ClinicScheduleViewSet)
 router.register(r'inventory', views.InventoryItemViewSet)
 router.register(r'stock-transactions', views.StockTransactionViewSet)
 

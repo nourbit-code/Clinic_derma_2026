@@ -12,8 +12,9 @@ import {
   ActivityIndicator,
   RefreshControl,
 } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import { Ionicons } from '@expo/vector-icons';
-import { createPatient, getPatients, updatePatient } from '../../src/api/receptionistApi';
+import { createPatient, getPatients, updatePatient, getInsuranceCompanies } from '../../src/api/receptionistApi';
 
 // --- COLOR PALETTE DEFINITION ---
 const PRIMARY_DARK = "#9B084D";
@@ -28,6 +29,17 @@ interface ApiPatient {
   gender: string;
   phone: string;
   created_at?: string;
+  has_insurance?: boolean;
+  insurance_company?: number | null;
+  insurance_company_name?: string;
+  insurance_discount_percent?: number;
+  insurance_member_id?: string;
+}
+
+interface InsuranceCompany {
+  id: number;
+  name: string;
+  discount_percent: number;
 }
 
 export default function AddPatient() {
@@ -35,6 +47,10 @@ export default function AddPatient() {
   const [age, setAge] = useState("");
   const [gender, setGender] = useState<"male" | "female" | "">("");
   const [phone, setPhone] = useState("");
+  const [hasInsurance, setHasInsurance] = useState(false);
+  const [insuranceCompanyId, setInsuranceCompanyId] = useState<number | ''>('');
+  const [insuranceMemberId, setInsuranceMemberId] = useState("");
+  const [insuranceCompanies, setInsuranceCompanies] = useState<InsuranceCompany[]>([]);
   const [patients, setPatients] = useState<ApiPatient[]>([]);
   const [editingPatient, setEditingPatient] = useState<ApiPatient | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,21 +74,36 @@ export default function AddPatient() {
     }
   }, []);
 
+  const fetchInsuranceCompanies = useCallback(async () => {
+    try {
+      const result = await getInsuranceCompanies();
+      if (result.success && result.data) {
+        setInsuranceCompanies(result.data);
+      }
+    } catch (error) {
+      console.error('[AddPatient] Error fetching insurance companies:', error);
+    }
+  }, []);
+
   // Initial load
   useEffect(() => {
     setLoading(true);
-    fetchPatients().finally(() => setLoading(false));
-  }, [fetchPatients]);
+    Promise.all([fetchPatients(), fetchInsuranceCompanies()]).finally(() => setLoading(false));
+  }, [fetchPatients, fetchInsuranceCompanies]);
 
   // Pull to refresh
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchPatients().finally(() => setRefreshing(false));
-  }, [fetchPatients]);
+    Promise.all([fetchPatients(), fetchInsuranceCompanies()]).finally(() => setRefreshing(false));
+  }, [fetchPatients, fetchInsuranceCompanies]);
 
   const handleAddOrUpdatePatient = async () => {
     if (!name || !age || !phone || !gender) {
       Alert.alert("Missing Fields", "Please fill in all the fields.");
+      return;
+    }
+    if (hasInsurance && !insuranceCompanyId) {
+      Alert.alert("Missing Insurance", "Please select an insurance company.");
       return;
     }
 
@@ -87,6 +118,9 @@ export default function AddPatient() {
           age: parseInt(age),
           gender: gender.toLowerCase(),
           phone,
+          has_insurance: hasInsurance,
+          insurance_company: hasInsurance ? insuranceCompanyId || null : null,
+          insurance_member_id: hasInsurance ? insuranceMemberId : '',
         });
 
         if (result.success) {
@@ -104,6 +138,9 @@ export default function AddPatient() {
           age: parseInt(age),
           gender: gender.toLowerCase(),
           phone,
+          has_insurance: hasInsurance,
+          insurance_company: hasInsurance ? insuranceCompanyId || null : null,
+          insurance_member_id: hasInsurance ? insuranceMemberId : '',
         });
 
         console.log('[AddPatient] Create result:', result);
@@ -121,6 +158,9 @@ export default function AddPatient() {
       setAge("");
       setPhone("");
       setGender("");
+      setHasInsurance(false);
+      setInsuranceCompanyId('');
+      setInsuranceMemberId("");
     } catch (error) {
       console.error('[AddPatient] Error:', error);
       Alert.alert("Error", "An unexpected error occurred");
@@ -134,6 +174,9 @@ export default function AddPatient() {
     setAge(patient.age?.toString() || "");
     setGender(patient.gender as "male" | "female" | "");
     setPhone(patient.phone);
+    setHasInsurance(!!patient.has_insurance);
+    setInsuranceCompanyId(patient.insurance_company ?? '');
+    setInsuranceMemberId(patient.insurance_member_id || "");
     setEditingPatient(patient);
   };
 
@@ -142,6 +185,9 @@ export default function AddPatient() {
     setAge("");
     setPhone("");
     setGender("");
+    setHasInsurance(false);
+    setInsuranceCompanyId('');
+    setInsuranceMemberId("");
     setEditingPatient(null);
   };
 
@@ -248,6 +294,54 @@ export default function AddPatient() {
           keyboardType="phone-pad"
           editable={!submitting}
         />
+
+        {/* Insurance Section */}
+        <Text style={styles.sectionLabel}>Insurance</Text>
+        <View style={styles.insuranceToggleRow}>
+          <TouchableOpacity
+            style={[styles.toggleButton, hasInsurance && styles.toggleButtonActive]}
+            onPress={() => setHasInsurance(true)}
+            disabled={submitting}
+          >
+            <Text style={[styles.toggleText, hasInsurance && styles.toggleTextActive]}>Has Insurance</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.toggleButton, !hasInsurance && styles.toggleButtonActive]}
+            onPress={() => setHasInsurance(false)}
+            disabled={submitting}
+          >
+            <Text style={[styles.toggleText, !hasInsurance && styles.toggleTextActive]}>No Insurance</Text>
+          </TouchableOpacity>
+        </View>
+
+        {hasInsurance && (
+          <>
+            <View style={styles.pickerBox}>
+              <Picker
+                selectedValue={insuranceCompanyId}
+                onValueChange={(value) => setInsuranceCompanyId(value === '' ? '' : Number(value))}
+                enabled={!submitting}
+              >
+                <Picker.Item label="Select insurance company..." value="" />
+                {insuranceCompanies.map((company) => (
+                  <Picker.Item
+                    key={company.id}
+                    label={`${company.name} (${company.discount_percent}%)`}
+                    value={company.id}
+                  />
+                ))}
+              </Picker>
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Insurance Member ID / Policy Number"
+              value={insuranceMemberId}
+              onChangeText={setInsuranceMemberId}
+              editable={!submitting}
+            />
+          </>
+        )}
 
         <TouchableOpacity
           style={[
@@ -387,6 +481,47 @@ const styles = StyleSheet.create({
   genderTextSelected: {
     color: "#fff",
     fontWeight: "600",
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: PRIMARY_DARK,
+    marginTop: 10,
+    marginBottom: 8,
+  },
+  insuranceToggleRow: {
+    flexDirection: "row",
+    gap: 10,
+    marginBottom: 12,
+  },
+  toggleButton: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  toggleButtonActive: {
+    backgroundColor: PRIMARY_DARK,
+    borderColor: PRIMARY_DARK,
+  },
+  toggleText: {
+    fontSize: 14,
+    color: "#333",
+    fontWeight: "600",
+  },
+  toggleTextActive: {
+    color: "#fff",
+  },
+  pickerBox: {
+    borderWidth: 1,
+    borderColor: INPUT_BORDER,
+    borderRadius: 10,
+    backgroundColor: "#fff",
+    marginBottom: 15,
+    overflow: "hidden",
   },
   addButton: {
     backgroundColor: PRIMARY_DARK,

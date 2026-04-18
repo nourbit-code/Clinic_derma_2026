@@ -5,6 +5,7 @@ import React, { Dispatch, SetStateAction, useState, useEffect } from 'react';
 import { Alert, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { getPatients, getDoctors, getServices, createAppointment, convertTo24Hour, getAppointments } from '../../src/api/appointmentApi';
+import { getResolvedClinicSchedule } from '../../src/api/receptionistApi';
 
 // --- ENHANCED COLOR PALETTE ---
 const PRIMARY_DARK = '#9B084D'; 
@@ -246,9 +247,11 @@ interface TimeSlotModalProps {
     onClose: () => void;
     onSelectTime: (time: string) => void;
     bookedTimes?: string[];
+    selectedDate?: string;
+    timeSlots?: { time: string; period: string }[];
 }
 
-const TIME_SLOTS = [
+const DEFAULT_TIME_SLOTS = [
     { time: '08:00 AM', period: 'Morning' },
     { time: '08:30 AM', period: 'Morning' },
     { time: '09:00 AM', period: 'Morning' },
@@ -271,6 +274,48 @@ const TIME_SLOTS = [
     { time: '05:30 PM', period: 'Evening' },
 ];
 
+type ClinicSchedule = {
+    openDays: number[];
+    openTime: string;
+    closeTime: string;
+    slotInterval: number;
+};
+
+const DEFAULT_SCHEDULE: ClinicSchedule = {
+    openDays: [1, 2, 3, 4, 5, 6],
+    openTime: "09:00",
+    closeTime: "17:00",
+    slotInterval: 30,
+};
+
+const buildTimeSlots = (schedule: ClinicSchedule, selectedDate: string): { time: string; period: string }[] => {
+    if (!selectedDate) return DEFAULT_TIME_SLOTS;
+    const dateObj = parseDateOnly(selectedDate);
+    if (!dateObj) return DEFAULT_TIME_SLOTS;
+    const dayIdx = dateObj.getDay();
+    if (!schedule.openDays.includes(dayIdx)) return [];
+
+    const [openH, openM] = schedule.openTime.split(':').map(Number);
+    const [closeH, closeM] = schedule.closeTime.split(':').map(Number);
+    if (Number.isNaN(openH) || Number.isNaN(openM) || Number.isNaN(closeH) || Number.isNaN(closeM)) {
+        return DEFAULT_TIME_SLOTS;
+    }
+    const startMinutes = openH * 60 + openM;
+    const endMinutes = closeH * 60 + closeM;
+    const interval = Math.max(5, schedule.slotInterval || 30);
+    const slots: { time: string; period: string }[] = [];
+    for (let t = startMinutes; t <= endMinutes; t += interval) {
+        const h = Math.floor(t / 60);
+        const m = t % 60;
+        const periodLabel = h < 12 ? 'Morning' : h < 16 ? 'Afternoon' : 'Evening';
+        const period = h >= 12 ? 'PM' : 'AM';
+        const h12 = h % 12 || 12;
+        const time = `${String(h12).padStart(2, '0')}:${String(m).padStart(2, '0')} ${period}`;
+        slots.push({ time, period: periodLabel });
+    }
+    return slots;
+};
+
 // Helper to convert 24h time to 12h format for comparison
 const convertTo12Hour = (time24: string): string => {
     if (!time24) return '';
@@ -280,7 +325,61 @@ const convertTo12Hour = (time24: string): string => {
     return `${hours12.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} ${period}`;
 };
 
-const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ visible, onClose, onSelectTime, bookedTimes = [] }) => {
+const isSameLocalDate = (dateA: Date, dateB: Date) => {
+    return (
+        dateA.getFullYear() === dateB.getFullYear() &&
+        dateA.getMonth() === dateB.getMonth() &&
+        dateA.getDate() === dateB.getDate()
+    );
+};
+
+const parseDateOnly = (dateStr: string): Date | null => {
+    if (!dateStr) return null;
+    const clean = dateStr.split('T')[0].trim();
+
+    if (clean.includes('-')) {
+        const [y, m, d] = clean.split('-').map(Number);
+        if (y && m && d) return new Date(y, m - 1, d);
+    }
+
+    if (clean.includes('/')) {
+        const parts = clean.split('/').map(Number);
+        if (parts.length === 3) {
+            const [a, b, c] = parts;
+            if (String(a).length === 4 && a && b && c) {
+                return new Date(a, b - 1, c);
+            }
+            if (String(c).length === 4 && a && b && c) {
+                // Assume DD/MM/YYYY for non-ISO slashes
+                return new Date(c, b - 1, a);
+            }
+        }
+    }
+
+    const parsed = new Date(clean);
+    return isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const to24HourParts = (time12: string): { hours: number; minutes: number } | null => {
+    const [timePart, period] = time12.split(' ');
+    if (!timePart || !period) return null;
+    const [hoursRaw, minutesRaw] = timePart.split(':').map(Number);
+    if (Number.isNaN(hoursRaw) || Number.isNaN(minutesRaw)) return null;
+    let hours = hoursRaw % 12;
+    if (period === 'PM') hours += 12;
+    return { hours, minutes: minutesRaw };
+};
+
+const getSlotDateTime = (selectedDate: string | undefined, time12: string): Date | null => {
+    const selected = parseDateOnly(selectedDate || '');
+    const timeParts = to24HourParts(time12);
+    if (!selected || !timeParts) return null;
+    const slot = new Date(selected);
+    slot.setHours(timeParts.hours, timeParts.minutes, 0, 0);
+    return slot;
+};
+
+const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ visible, onClose, onSelectTime, bookedTimes = [], selectedDate, timeSlots = DEFAULT_TIME_SLOTS }) => {
     const [selectedPeriod, setSelectedPeriod] = useState<string>('Morning');
 
     const handleSelectTime = (time: string) => {
@@ -295,7 +394,15 @@ const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ visible, onClose, onSelec
         return bookedTimes12h.includes(time);
     };
 
-    const filteredSlots = TIME_SLOTS.filter(slot => slot.period === selectedPeriod);
+    const isPastTime = (time: string): boolean => {
+        const now = new Date();
+        const slotDateTime = getSlotDateTime(selectedDate, time);
+        if (!slotDateTime) return false;
+        if (!isSameLocalDate(slotDateTime, now)) return false;
+        return slotDateTime.getTime() < now.getTime();
+    };
+
+    const filteredSlots = timeSlots.filter(slot => slot.period === selectedPeriod);
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -340,21 +447,39 @@ const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ visible, onClose, onSelec
                     {/* Time Slots Grid */}
                     <ScrollView style={timeStyles.slotsContainer} showsVerticalScrollIndicator={false}>
                         <View style={timeStyles.slotsGrid}>
+                            {filteredSlots.length === 0 && (
+                                <Text style={timeStyles.emptySlotsText}>No available slots for this day.</Text>
+                            )}
                             {filteredSlots.map((slot) => {
                                 const booked = isTimeBooked(slot.time);
+                                const past = isPastTime(slot.time);
+                                const disabled = booked || past;
                                 return (
                                     <TouchableOpacity
                                         key={slot.time}
-                                        style={[timeStyles.timeSlot, booked && timeStyles.timeSlotBooked]}
-                                        onPress={() => !booked && handleSelectTime(slot.time)}
-                                        disabled={booked}
-                                        activeOpacity={booked ? 1 : 0.7}
+                                        style={[
+                                            timeStyles.timeSlot,
+                                            disabled && timeStyles.timeSlotDisabled,
+                                            booked && timeStyles.timeSlotBooked,
+                                            past && timeStyles.timeSlotPast,
+                                        ]}
+                                        onPress={() => !disabled && handleSelectTime(slot.time)}
+                                        disabled={disabled}
+                                        activeOpacity={disabled ? 1 : 0.7}
                                     >
-                                        <Text style={[timeStyles.timeSlotText, booked && timeStyles.timeSlotTextBooked]}>
+                                        <Text style={[
+                                            timeStyles.timeSlotText,
+                                            disabled && timeStyles.timeSlotTextDisabled,
+                                            booked && timeStyles.timeSlotTextBooked,
+                                            past && timeStyles.timeSlotTextPast,
+                                        ]}>
                                             {slot.time}
                                         </Text>
                                         {booked && (
                                             <Text style={timeStyles.bookedLabel}>Booked</Text>
+                                        )}
+                                        {!booked && past && (
+                                            <Text style={timeStyles.pastLabel}>Past</Text>
                                         )}
                                     </TouchableOpacity>
                                 );
@@ -380,9 +505,11 @@ interface DatePickerButtonProps {
     placeholder: string;
     required?: boolean;
     bookedTimes?: string[];
+    selectedDate?: string;
+    timeSlots?: { time: string; period: string }[];
 }
 
-const DatePickerButton: React.FC<DatePickerButtonProps> = ({ label, iconName, value, onSelect, placeholder, required, bookedTimes = [] }) => {
+const DatePickerButton: React.FC<DatePickerButtonProps> = ({ label, iconName, value, onSelect, placeholder, required, bookedTimes = [], selectedDate, timeSlots }) => {
     const [showModal, setShowModal] = useState(false);
     const isDatePicker = label.toLowerCase().includes('date');
 
@@ -413,7 +540,7 @@ const DatePickerButton: React.FC<DatePickerButtonProps> = ({ label, iconName, va
             {isDatePicker ? (
                 <CalendarModal visible={showModal} onClose={() => setShowModal(false)} onSelectDate={onSelect} />
             ) : (
-                <TimeSlotModal visible={showModal} onClose={() => setShowModal(false)} onSelectTime={onSelect} bookedTimes={bookedTimes} />
+                <TimeSlotModal visible={showModal} onClose={() => setShowModal(false)} onSelectTime={onSelect} bookedTimes={bookedTimes} selectedDate={selectedDate} timeSlots={timeSlots} />
             )}
         </>
     );
@@ -463,6 +590,7 @@ export default function BookAppointment() {
     const [status, setStatus] = useState('booked');
     const [notes, setNotes] = useState('');
     const [bookedTimes, setBookedTimes] = useState<string[]>([]);
+    const [timeSlots, setTimeSlots] = useState(DEFAULT_TIME_SLOTS);
 
     // Handle date change - also clear time since slots may differ
     const handleDateChange = (newDate: string) => {
@@ -554,6 +682,33 @@ export default function BookAppointment() {
         };
 
         fetchBookedTimes();
+    }, [date, selectedDoctorId]);
+
+    useEffect(() => {
+        const loadSchedule = async () => {
+            try {
+                const resolved = await getResolvedClinicSchedule(selectedDoctorId || null);
+                const data = resolved.success ? resolved.data : null;
+                const schedule: ClinicSchedule = data
+                    ? {
+                        openDays: Array.isArray(data.open_days) ? data.open_days : DEFAULT_SCHEDULE.openDays,
+                        openTime: String(data.open_time || '09:00').slice(0, 5),
+                        closeTime: String(data.close_time || '17:00').slice(0, 5),
+                        slotInterval: Number(data.slot_interval) || 30,
+                    }
+                    : DEFAULT_SCHEDULE;
+                if (!date) {
+                    setTimeSlots(DEFAULT_TIME_SLOTS);
+                    return;
+                }
+                const slots = buildTimeSlots(schedule, date);
+                setTimeSlots(slots);
+            } catch (error) {
+                console.error('Error loading clinic schedule:', error);
+                setTimeSlots(DEFAULT_TIME_SLOTS);
+            }
+        };
+        loadSchedule();
     }, [date, selectedDoctorId]);
 
     const selectedPatient = patients.find(p => p.patient_id === selectedPatientId);
@@ -768,6 +923,8 @@ export default function BookAppointment() {
                                     placeholder="Select time"
                                     required
                                     bookedTimes={bookedTimes}
+                                    selectedDate={date}
+                                    timeSlots={timeSlots}
                                 />
                             </View>
                         </View>
@@ -1437,7 +1594,17 @@ const timeStyles = StyleSheet.create({
         borderWidth: 1,
         borderColor: '#E5E7EB',
     },
+    timeSlotDisabled: {
+        backgroundColor: '#F1F5F9',
+        borderColor: '#D1D5DB',
+        opacity: 0.7,
+    },
     timeSlotBooked: {
+        backgroundColor: '#F1F5F9',
+        borderColor: '#D1D5DB',
+        opacity: 0.7,
+    },
+    timeSlotPast: {
         backgroundColor: '#F1F5F9',
         borderColor: '#D1D5DB',
         opacity: 0.7,
@@ -1447,7 +1614,13 @@ const timeStyles = StyleSheet.create({
         fontWeight: '600',
         color: PRIMARY_DARK,
     },
+    timeSlotTextDisabled: {
+        color: '#9CA3AF',
+    },
     timeSlotTextBooked: {
+        color: '#9CA3AF',
+    },
+    timeSlotTextPast: {
         color: '#9CA3AF',
     },
     bookedLabel: {
@@ -1456,6 +1629,20 @@ const timeStyles = StyleSheet.create({
         color: '#EF4444',
         marginTop: 2,
         textTransform: 'uppercase',
+    },
+    pastLabel: {
+        fontSize: 10,
+        fontWeight: '600',
+        color: '#9CA3AF',
+        marginTop: 2,
+        textTransform: 'uppercase',
+    },
+    emptySlotsText: {
+        fontSize: 13,
+        color: TEXT_SECONDARY,
+        marginBottom: 10,
+        textAlign: 'center',
+        width: '100%',
     },
     closeBtn: {
         paddingVertical: 16,

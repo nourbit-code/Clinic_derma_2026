@@ -48,6 +48,8 @@ interface AppointmentsDateData {
 // --- COLOR PALETTE ---
 const PRIMARY_DARK = '#9B084D';
 const PRIMARY_LIGHT = '#E80A7A';
+const COMPLETED_ROW_BG = '#E9F7EF';
+const CANCELLED_ROW_BG = '#FDEBEC';
 
 const getTodayDate = () => new Date().toISOString().split('T')[0];
 
@@ -196,52 +198,26 @@ export default function TodaysPatients() {
     }
   };
 
-  // Get status style
-  const getStatusStyle = (status: string) => {
-    switch (status) {
-      case 'Confirmed':
-        return styles.statusConfirmed;
-      case 'Pending':
-        return styles.statusPending;
-      case 'Checked In':
-        return styles.statusCheckedIn;
-      case 'Canceled':
-        return styles.statusCanceled;
-      default:
-        return {};
-    }
+  const parseAppointmentDateTime = (dateStr: string, timeStr: string) => {
+    const [timePart, meridiemRaw] = timeStr.split(' ');
+    const [rawHours, rawMinutes] = timePart.split(':').map((t) => parseInt(t, 10));
+    const meridiem = (meridiemRaw || '').toUpperCase();
+    let hours = rawHours;
+    if (meridiem === 'PM' && hours < 12) hours += 12;
+    if (meridiem === 'AM' && hours === 12) hours = 0;
+    const paddedHours = String(hours).padStart(2, '0');
+    const paddedMinutes = String(rawMinutes).padStart(2, '0');
+    return new Date(`${dateStr}T${paddedHours}:${paddedMinutes}:00`);
   };
 
-  // Get status badge background style
-  const getStatusBadgeStyle = (status: string) => {
-    switch (status) {
-      case 'Confirmed':
-        return { backgroundColor: '#E8F5E9' };
-      case 'Pending':
-        return { backgroundColor: '#FFF8E1' };
-      case 'Checked In':
-        return { backgroundColor: '#E3F2FD' };
-      case 'Canceled':
-        return { backgroundColor: '#FFEBEE' };
-      default:
-        return { backgroundColor: '#F5F5F5' };
-    }
-  };
+  const isCompleted = (status: string) => status === 'Confirmed' || status === 'Completed';
+  const isCancelled = (status: string) => status === 'Canceled' || status === 'Cancelled';
 
-  // Get status text color style
-  const getStatusTextStyle = (status: string) => {
-    switch (status) {
-      case 'Confirmed':
-        return { color: '#28A745' };
-      case 'Pending':
-        return { color: '#E6A000' };
-      case 'Checked In':
-        return { color: '#1976D2' };
-      case 'Canceled':
-        return { color: '#DC3545' };
-      default:
-        return { color: '#666' };
-    }
+  const shouldAutoCancel = (dateStr: string, timeStr: string, status: string) => {
+    if (isCompleted(status) || isCancelled(status)) return false;
+    const apptDate = parseAppointmentDateTime(dateStr, timeStr);
+    const threeHoursLater = new Date(apptDate.getTime() + 3 * 60 * 60 * 1000);
+    return new Date() > threeHoursLater;
   };
 
   // Loading state
@@ -315,25 +291,32 @@ export default function TodaysPatients() {
               <Text style={[styles.cell, styles.headerCell]}>Patient</Text>
               <Text style={[styles.cell, styles.headerCell]}>Service</Text>
               <Text style={[styles.cell, styles.headerCell]}>Time</Text>
-              <Text style={[styles.cell, styles.headerCell]}>Status</Text>
               <Text style={[styles.cell, styles.headerCell]}>Action</Text>
             </View>
 
-            {selectedDateAppointments.map((p) => (
+            {selectedDateAppointments.map((p) => {
+              const autoCancelled = shouldAutoCancel(selectedDate, p.time, p.status);
+              const completed = isCompleted(p.status);
+              const cancelled = isCancelled(p.status) || autoCancelled;
+              const rowHighlightStyle = completed
+                ? styles.rowCompleted
+                : cancelled
+                ? styles.rowCancelled
+                : null;
+
+              return (
               <TouchableOpacity 
                 key={p.id} 
                 style={[
                   styles.tableRow,
-                  selectedPatient?.id === p.id && styles.selectedRow
+                  selectedPatient?.id === p.id && styles.selectedRow,
+                  rowHighlightStyle,
                 ]}
                 onPress={() => setSelectedPatient(p)}
               >
                 <Text style={styles.cell}>{p.name}</Text>
                 <Text style={styles.cell}>{p.service}</Text>
                 <Text style={styles.cell}>{formatTime(p.time)}</Text>
-                <Text style={[styles.cell, getStatusStyle(p.status)]}>
-                  {p.status}
-                </Text>
                 <TouchableOpacity
                   style={styles.startExamButton}
                   onPress={() =>
@@ -346,7 +329,8 @@ export default function TodaysPatients() {
                   <Text style={styles.startExamText}>Start diagnosis</Text>
                 </TouchableOpacity>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </>
         )}
       </ScrollView>
@@ -389,18 +373,6 @@ export default function TodaysPatients() {
                 <Text style={styles.infoLabel}>Time</Text>
               </View>
               <Text style={styles.infoValue}>{formatTime(selectedPatient.time)}</Text>
-            </View>
-
-            <View style={styles.infoCard}>
-              <View style={styles.infoIconRow}>
-                <Ionicons name="checkmark-circle-outline" size={16} color="#9B084D" />
-                <Text style={styles.infoLabel}>Status</Text>
-              </View>
-              <View style={[styles.statusBadge, getStatusBadgeStyle(selectedPatient.status)]}>
-                <Text style={[styles.statusBadgeText, getStatusTextStyle(selectedPatient.status)]}>
-                  {selectedPatient.status}
-                </Text>
-              </View>
             </View>
 
             {/* Divider */}
@@ -471,6 +443,12 @@ const styles = StyleSheet.create({
   },
   selectedRow: {
     backgroundColor: '#F3E5F5',
+  },
+  rowCompleted: {
+    backgroundColor: COMPLETED_ROW_BG,
+  },
+  rowCancelled: {
+    backgroundColor: CANCELLED_ROW_BG,
   },
   cell: { flex: 1, textAlign: 'center', fontSize: 13 },
   headerCell: { fontWeight: 'bold', color: '#9B084D' },

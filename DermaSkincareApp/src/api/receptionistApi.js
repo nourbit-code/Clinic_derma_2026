@@ -247,6 +247,161 @@ export const getDoctors = async () => {
 };
 
 /**
+ * Create doctor account
+ * @param {Object} doctorData
+ * @returns {Promise<Object>}
+ */
+export const createDoctor = async (doctorData) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/doctors/`, doctorData);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to create doctor account'
+    };
+  }
+};
+
+/**
+ * Delete doctor account
+ * @param {number} doctorId
+ * @returns {Promise<Object>}
+ */
+export const deleteDoctor = async (doctorId) => {
+  try {
+    await axios.delete(`${API_BASE_URL}/doctors/${doctorId}/`);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to delete doctor account'
+    };
+  }
+};
+
+/**
+ * Get all receptionists
+ * @returns {Promise<Object>}
+ */
+export const getReceptionists = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/receptionists/`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch receptionist accounts'
+    };
+  }
+};
+
+/**
+ * Create receptionist account
+ * @param {Object} receptionistData
+ * @returns {Promise<Object>}
+ */
+export const createReceptionist = async (receptionistData) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/receptionists/`, receptionistData);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to create receptionist account'
+    };
+  }
+};
+
+/**
+ * Delete receptionist account
+ * @param {number} receptionistId
+ * @returns {Promise<Object>}
+ */
+export const deleteReceptionist = async (receptionistId) => {
+  try {
+    await axios.delete(`${API_BASE_URL}/receptionists/${receptionistId}/`);
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to delete receptionist account'
+    };
+  }
+};
+
+/**
+ * Ensure one admin receptionist exists (set current one if none)
+ * @param {number} receptionistId
+ * @returns {Promise<Object>}
+ */
+export const ensureReceptionistAdmin = async (receptionistId) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/receptionists/ensure_admin/`, {
+      receptionist_id: receptionistId,
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to ensure admin receptionist'
+    };
+  }
+};
+
+/**
+ * Get clinic schedules
+ * @returns {Promise<Object>}
+ */
+export const getClinicSchedules = async () => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/clinic-schedules/`);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch clinic schedules'
+    };
+  }
+};
+
+/**
+ * Upsert clinic schedule for default or doctor
+ * @param {Object} payload
+ * @returns {Promise<Object>}
+ */
+export const upsertClinicSchedule = async (payload) => {
+  try {
+    const response = await axios.post(`${API_BASE_URL}/clinic-schedules/upsert/`, payload);
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to save clinic schedule'
+    };
+  }
+};
+
+/**
+ * Get resolved schedule for a doctor (fallbacks to default schedule)
+ * @param {number | null} doctorId
+ * @returns {Promise<Object>}
+ */
+export const getResolvedClinicSchedule = async (doctorId = null) => {
+  try {
+    const response = await axios.get(`${API_BASE_URL}/clinic-schedules/resolved/`, {
+      params: doctorId ? { doctor: doctorId } : {},
+    });
+    return { success: true, data: response.data };
+  } catch (error) {
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch resolved clinic schedule'
+    };
+  }
+};
+
+/**
  * Get all services
  * @returns {Promise<Object>} List of services
  */
@@ -264,6 +419,97 @@ export const getServices = async () => {
     return {
       success: false,
       error: error.response?.data?.error || 'Failed to fetch services'
+    };
+  }
+};
+
+// ==================== INSURANCE COMPANY API FUNCTIONS ====================
+
+/**
+ * Get all insurance companies
+ * @returns {Promise<Object>} List of insurance companies
+ */
+export const getInsuranceCompanies = async () => {
+  try {
+    console.log('[ReceptionistAPI] Fetching insurance companies');
+    const response = await axios.get(`${API_BASE_URL}/insurance-companies/`);
+    console.log('[ReceptionistAPI] Insurance companies response:', response.data);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[ReceptionistAPI] Error fetching insurance companies:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to fetch insurance companies'
+    };
+  }
+};
+
+/**
+ * Create a new insurance company
+ * @param {Object} companyData - Company data
+ * @returns {Promise<Object>} Created company
+ */
+export const createInsuranceCompany = async (companyData) => {
+  try {
+    console.log('[ReceptionistAPI] Creating insurance company:', companyData);
+    const response = await axios.post(`${API_BASE_URL}/insurance-companies/`, companyData);
+    console.log('[ReceptionistAPI] Create insurance company response:', response.data);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[ReceptionistAPI] Error creating insurance company:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to create insurance company'
+    };
+  }
+};
+
+/**
+ * Update an insurance company
+ * @param {number} companyId - Company ID
+ * @param {Object} companyData - Updated data
+ * @returns {Promise<Object>} Updated company
+ */
+export const updateInsuranceCompany = async (companyId, companyData) => {
+  try {
+    console.log('[ReceptionistAPI] Updating insurance company:', companyId);
+    const response = await axios.patch(`${API_BASE_URL}/insurance-companies/${companyId}/`, companyData);
+    console.log('[ReceptionistAPI] Update insurance company response:', response.data);
+    return {
+      success: true,
+      data: response.data
+    };
+  } catch (error) {
+    console.error('[ReceptionistAPI] Error updating insurance company:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to update insurance company'
+    };
+  }
+};
+
+/**
+ * Delete an insurance company
+ * @param {number} companyId - Company ID
+ * @returns {Promise<Object>} Success status
+ */
+export const deleteInsuranceCompany = async (companyId) => {
+  try {
+    console.log('[ReceptionistAPI] Deleting insurance company:', companyId);
+    await axios.delete(`${API_BASE_URL}/insurance-companies/${companyId}/`);
+    console.log('[ReceptionistAPI] Insurance company deleted successfully');
+    return { success: true };
+  } catch (error) {
+    console.error('[ReceptionistAPI] Error deleting insurance company:', error);
+    return {
+      success: false,
+      error: error.response?.data?.error || 'Failed to delete insurance company'
     };
   }
 };

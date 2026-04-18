@@ -1,5 +1,17 @@
 from django.db import models
 from django.contrib.auth.models import User
+from datetime import time
+
+# -------------------------
+# Insurance Company
+# -------------------------
+class InsuranceCompany(models.Model):
+    name = models.CharField(max_length=200, unique=True)
+    discount_percent = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)  # percentage
+
+    def __str__(self):
+        return f"{self.name} ({self.discount_percent}%)"
+
 
 # -------------------------
 # Patient
@@ -19,6 +31,9 @@ class Patient(models.Model):
     notes = models.TextField(blank=True)
     medical_history = models.TextField(blank=True)  # Store as comma-separated or JSON
     surgeries = models.TextField(blank=True)  # Store as comma-separated or JSON
+    has_insurance = models.BooleanField(default=False)
+    insurance_company = models.ForeignKey(InsuranceCompany, on_delete=models.SET_NULL, null=True, blank=True, related_name='patients')
+    insurance_member_id = models.CharField(max_length=100, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -40,6 +55,26 @@ class Doctor(models.Model):
 
 
 # -------------------------
+# Clinic Schedule (Default or Per-Doctor)
+# -------------------------
+class ClinicSchedule(models.Model):
+    doctor = models.ForeignKey(Doctor, on_delete=models.SET_NULL, null=True, blank=True, related_name='clinic_schedules')
+    open_days = models.JSONField(default=list)  # list of weekday indexes (0=Sun .. 6=Sat)
+    open_time = models.TimeField(default=time(9, 0))
+    close_time = models.TimeField(default=time(17, 0))
+    slot_interval = models.PositiveIntegerField(default=30)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Clinic Schedule"
+        verbose_name_plural = "Clinic Schedules"
+
+    def __str__(self):
+        label = f"Dr. {self.doctor.name}" if self.doctor else "All Doctors"
+        return f"{label} schedule"
+
+
+# -------------------------
 # Receptionist (linked to Django User)
 # -------------------------
 class Receptionist(models.Model):
@@ -48,6 +83,7 @@ class Receptionist(models.Model):
     name = models.CharField(max_length=200)
     email = models.EmailField(max_length=254, unique=True, null=True, blank=True)
     password = models.CharField(max_length=128, null=True, blank=True)
+    is_admin = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -515,4 +551,3 @@ class LaserSession(models.Model):
 # Audit: previous visits flag (simple boolean/derived)
 # -------------------------
 # You can compute previous visits by checking patient.appointments.filter(date__lt=today).exists()
-

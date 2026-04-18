@@ -13,6 +13,7 @@ interface ReceptionistUser {
     id: number;
     name: string;
     email: string;
+    is_admin?: boolean;
 }
 
 type User = DoctorUser | ReceptionistUser;
