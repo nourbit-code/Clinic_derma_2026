@@ -1,7 +1,7 @@
 // src/api/receptionistApi.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
 /**
  * Get receptionist dashboard data including today's appointments and stats
@@ -657,3 +657,5 @@ export const deleteInvoice = async (invoiceId) => {
     };
   }
 };
+
+

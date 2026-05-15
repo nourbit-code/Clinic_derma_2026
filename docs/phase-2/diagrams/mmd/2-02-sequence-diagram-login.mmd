@@ -1,0 +1,20 @@
+﻿sequenceDiagram
+    actor U as User
+    participant FE as Frontend App
+    participant API as Django API
+    participant DB as SQLite
+
+    U->>FE: Enter email and password
+    FE->>API: POST /api/login/
+    API->>DB: Query Doctor by email
+    alt Doctor not found
+        API->>DB: Query Receptionist by email
+    end
+    DB-->>API: User row or empty
+    alt Credentials valid
+        API-->>FE: 200 + role + user profile
+        FE-->>U: Open role dashboard
+    else Invalid credentials
+        API-->>FE: 401 + error
+        FE-->>U: Show error message
+    end

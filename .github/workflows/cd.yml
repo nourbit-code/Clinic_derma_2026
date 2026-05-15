@@ -1,0 +1,48 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: ["master", "main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  BACKEND_DEPLOY_HOOK_URL: ${{ secrets.BACKEND_DEPLOY_HOOK_URL }}
+  FRONTEND_DEPLOY_HOOK_URL: ${{ secrets.FRONTEND_DEPLOY_HOOK_URL }}
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate deploy hook configuration
+        run: |
+          if [ -z "${BACKEND_DEPLOY_HOOK_URL}" ] && [ -z "${FRONTEND_DEPLOY_HOOK_URL}" ]; then
+            echo "No deploy hook secrets are configured."
+            echo "Set BACKEND_DEPLOY_HOOK_URL and/or FRONTEND_DEPLOY_HOOK_URL in repository secrets."
+            exit 1
+          fi
+          echo "Deploy hook configuration found."
+
+      - name: Trigger backend deployment
+        if: env.BACKEND_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "Triggering backend deployment hook"
+          curl -fsS -X POST "${BACKEND_DEPLOY_HOOK_URL}"
+
+      - name: Trigger frontend deployment
+        if: env.FRONTEND_DEPLOY_HOOK_URL != ''
+        run: |
+          echo "Triggering frontend deployment hook"
+          curl -fsS -X POST "${FRONTEND_DEPLOY_HOOK_URL}"
+
+      - name: Deployment workflow finished
+        run: echo "Deployment hooks triggered successfully."

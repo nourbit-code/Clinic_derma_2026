@@ -1,7 +1,7 @@
 // src/api/doctorApi.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
 /**
  * Get doctor dashboard data including today's appointments and stats
@@ -463,3 +463,5 @@ export default {
   getSurgeryTypes,
   addSurgeryType,
 };
+
+

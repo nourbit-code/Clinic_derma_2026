@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project Documentation
+    url: https://github.com/nourbit-code/Clinic_derma_2026
+    about: Check project docs and phase deliverables before opening an issue.

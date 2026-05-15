@@ -1,0 +1,708 @@
+﻿{
+    "info":  {
+                 "_postman_id":  "3b4df04d-4f0f-460f-8ffb-d968fcb9a7a1",
+                 "name":  "Clinic Derma Backend API",
+                 "description":  "Ready-to-run collection for testing the Django backend endpoints.",
+                 "schema":  "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+             },
+    "item":  [
+                 {
+                     "name":  "01 Setup \u0026 Auth",
+                     "item":  [
+                                  {
+                                      "name":  "GET Patients (Sanity Check)",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/patients/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 200\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(200);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "name":  "POST Create Receptionist",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "const ts = Date.now();",
+                                                                                    "pm.collectionVariables.set(\u0027receptionist_email\u0027, `postman.admin.${ts}@test.com`);",
+                                                                                    "pm.collectionVariables.set(\u0027receptionist_password\u0027, \u0027123456\u0027);"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.receptionist_id) pm.collectionVariables.set(\u0027receptionist_id\u0027, json.receptionist_id);",
+                                                                                    "if (json.email) pm.collectionVariables.set(\u0027receptionist_email\u0027, json.email);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"Postman Admin\",\n  \"email\": \"{{receptionist_email}}\",\n  \"password\": \"{{receptionist_password}}\",\n  \"is_admin\": true\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/receptionists/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Login",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 200\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(200);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "pm.test(\u0027Role exists\u0027, function () {",
+                                                                                    "  pm.expect(json).to.have.property(\u0027role\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"email\": \"{{receptionist_email}}\",\n  \"password\": \"{{receptionist_password}}\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/login/"
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "02 Core Data",
+                     "item":  [
+                                  {
+                                      "name":  "POST Create Insurance Company",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.collectionVariables.set(\u0027insurance_name\u0027, `Postman Insurance ${Date.now()}`);"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.id) pm.collectionVariables.set(\u0027insurance_company_id\u0027, json.id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"{{insurance_name}}\",\n  \"discount_percent\": \"20.00\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/insurance-companies/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Create Patient (With Insurance)",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.collectionVariables.set(\u0027patient_email\u0027, `patient.${Date.now()}@test.com`);"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.patient_id) pm.collectionVariables.set(\u0027patient_id\u0027, json.patient_id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"API Test Patient\",\n  \"age\": 30,\n  \"gender\": \"female\",\n  \"phone\": \"01000000000\",\n  \"email\": \"{{patient_email}}\",\n  \"notes\": \"Created from Postman collection\",\n  \"medical_history\": \"eczema\",\n  \"surgeries\": \"\",\n  \"has_insurance\": true,\n  \"insurance_company\": {{insurance_company_id}},\n  \"insurance_member_id\": \"INS-1001\",\n  \"insurance_valid_from\": \"2026-01-01\",\n  \"insurance_valid_to\": \"2026-12-31\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/patients/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Patient Details",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/patients/{{patient_id}}/details/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 200\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(200);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "pm.test(\u0027Has insurance_is_active field\u0027, function () {",
+                                                                                    "  pm.expect(json).to.have.property(\u0027insurance_is_active\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "name":  "POST Create Appointment",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "const d = new Date();",
+                                                                                    "const yyyy = d.getFullYear();",
+                                                                                    "const mm = String(d.getMonth() + 1).padStart(2, \u00270\u0027);",
+                                                                                    "const dd = String(d.getDate()).padStart(2, \u00270\u0027);",
+                                                                                    "pm.collectionVariables.set(\u0027appointment_date\u0027, `${yyyy}-${mm}-${dd}`);"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.appointment_id) pm.collectionVariables.set(\u0027appointment_id\u0027, json.appointment_id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"patient\": {{patient_id}},\n  \"type\": \"Diagnosis\",\n  \"date\": \"{{appointment_date}}\",\n  \"time\": \"10:30:00\",\n  \"status\": \"booked\",\n  \"notes\": \"Postman test appointment\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/appointments/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Create Invoice",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.invoice_id) pm.collectionVariables.set(\u0027invoice_id\u0027, json.invoice_id);",
+                                                                                    "pm.test(\u0027Invoice has total_amount\u0027, function () {",
+                                                                                    "  pm.expect(json).to.have.property(\u0027total_amount\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"patient\": {{patient_id}},\n  \"discount_amount\": 0,\n  \"payment_method\": \"cash\",\n  \"items\": [\n    {\n      \"description\": \"Consultation\",\n      \"quantity\": 1,\n      \"unit_price\": 500\n    }\n  ]\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/invoices/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Mark Invoice Paid",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"payment_method\": \"cash\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/invoices/{{invoice_id}}/mark_paid/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 200\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(200);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "03 Reports",
+                     "item":  [
+                                  {
+                                      "name":  "GET Analytics (Week)",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/reports/analytics/?period=week"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Appointments Report (Month)",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/reports/appointments/?period=month"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Inventory Report",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/reports/inventory/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Patients Analytics (Month)",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/reports/patients/?period=month"
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "04 Clinic Schedule",
+                     "item":  [
+                                  {
+                                      "name":  "POST Upsert Default Schedule",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"doctor\": \"default\",\n  \"open_days\": [1, 2, 3, 4, 5, 6],\n  \"open_time\": \"09:00\",\n  \"close_time\": \"17:00\",\n  \"slot_interval\": 30\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/clinic-schedules/upsert/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "GET Resolved Default Schedule",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+
+                                                                 ],
+                                                      "url":  "{{baseUrl}}/clinic-schedules/resolved/?doctor=default"
+                                                  }
+                                  }
+                              ]
+                 },
+                 {
+                     "name":  "05 Negative Tests",
+                     "item":  [
+                                  {
+                                      "name":  "POST Login (Invalid Credentials - expect 401)",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"email\": \"wrong.user.test@example.com\",\n  \"password\": \"wrongpassword\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/login/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 401\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(401);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "pm.test(\u0027Error message exists\u0027, function () {",
+                                                                                    "  pm.expect(json).to.have.property(\u0027error\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "name":  "POST Create Insurance Company (Negative Suite)",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.collectionVariables.set(\u0027negative_insurance_name\u0027, Neg Insurance );"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.id) pm.collectionVariables.set(\u0027negative_insurance_company_id\u0027, json.id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"{{negative_insurance_name}}\",\n  \"discount_percent\": \"20.00\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/insurance-companies/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Create Patient (Expired Insurance)",
+                                      "event":  [
+                                                    {
+                                                        "listen":  "prerequest",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.collectionVariables.set(\u0027expired_patient_email\u0027, expired.patient.@test.com);"
+                                                                                ]
+                                                                   }
+                                                    },
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.patient_id) pm.collectionVariables.set(\u0027expired_patient_id\u0027, json.patient_id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ],
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"Expired Insurance Patient\",\n  \"age\": 28,\n  \"gender\": \"male\",\n  \"phone\": \"01000000111\",\n  \"email\": \"{{expired_patient_email}}\",\n  \"has_insurance\": true,\n  \"insurance_company\": {{negative_insurance_company_id}},\n  \"insurance_member_id\": \"EX-001\",\n  \"insurance_valid_from\": \"2024-01-01\",\n  \"insurance_valid_to\": \"2024-12-31\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/patients/"
+                                                  }
+                                  },
+                                  {
+                                      "name":  "POST Create Invoice (Expired Insurance -\u003e coverage 0)",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"patient\": {{expired_patient_id}},\n  \"discount_amount\": 0,\n  \"payment_method\": \"cash\",\n  \"items\": [\n    {\n      \"description\": \"Consultation\",\n      \"quantity\": 1,\n      \"unit_price\": 500\n    }\n  ]\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/invoices/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "pm.test(\u0027Insurance coverage is 0 for expired policy\u0027, function () {",
+                                                                                    "  const cov = Number(json.insurance_coverage || 0);",
+                                                                                    "  pm.expect(cov).to.eql(0);",
+                                                                                    "});",
+                                                                                    "pm.test(\u0027Insurance provider cleared for expired policy\u0027, function () {",
+                                                                                    "  pm.expect((json.insurance_provider || \u0027\u0027)).to.eql(\u0027\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "name":  "POST Create Inventory Item (Low Quantity)",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"name\": \"Negative Stock Item\",\n  \"category\": \"consumable\",\n  \"quantity\": 2,\n  \"unit\": \"unit\",\n  \"supplier\": \"Postman\",\n  \"min_stock_level\": 1,\n  \"cost_per_unit\": \"10.00\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/inventory/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 201\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(201);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "if (json.item_id) pm.collectionVariables.set(\u0027negative_inventory_item_id\u0027, json.item_id);"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  },
+                                  {
+                                      "name":  "POST Use Stock More Than Available (expect 400)",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \"quantity\": 999,\n  \"notes\": \"Negative test over-usage\",\n  \"performed_by\": \"Postman\"\n}"
+                                                               },
+                                                      "url":  "{{baseUrl}}/inventory/{{negative_inventory_item_id}}/use_stock/"
+                                                  },
+                                      "event":  [
+                                                    {
+                                                        "listen":  "test",
+                                                        "script":  {
+                                                                       "type":  "text/javascript",
+                                                                       "exec":  [
+                                                                                    "pm.test(\u0027Status is 400\u0027, function () {",
+                                                                                    "  pm.response.to.have.status(400);",
+                                                                                    "});",
+                                                                                    "const json = pm.response.json();",
+                                                                                    "pm.test(\u0027Error says insufficient stock\u0027, function () {",
+                                                                                    "  pm.expect((json.error || \u0027\u0027).toLowerCase()).to.include(\u0027insufficient\u0027);",
+                                                                                    "});"
+                                                                                ]
+                                                                   }
+                                                    }
+                                                ]
+                                  }
+                              ]
+                 }
+             ],
+    "variable":  [
+                     {
+                         "key":  "baseUrl",
+                         "value":  "http://127.0.0.1:8000/api"
+                     },
+                     {
+                         "key":  "receptionist_email",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "receptionist_password",
+                         "value":  "123456"
+                     },
+                     {
+                         "key":  "receptionist_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "insurance_name",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "insurance_company_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "patient_email",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "patient_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "appointment_date",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "appointment_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "invoice_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "negative_insurance_name",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "negative_insurance_company_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "expired_patient_email",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "expired_patient_id",
+                         "value":  ""
+                     },
+                     {
+                         "key":  "negative_inventory_item_id",
+                         "value":  ""
+                     }
+                 ]
+}

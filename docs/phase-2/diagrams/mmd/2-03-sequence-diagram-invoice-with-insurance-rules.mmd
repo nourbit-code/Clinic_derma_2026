@@ -1,0 +1,19 @@
+﻿sequenceDiagram
+    actor R as Receptionist
+    participant FE as Frontend App
+    participant API as InvoiceViewSet
+    participant DB as Database
+
+    R->>FE: Submit invoice items for patient
+    FE->>API: POST /api/invoices/
+    API->>DB: Load patient and insurance data
+    API->>API: Check patient.is_insurance_active(today)
+    alt Insurance active
+        API->>API: Apply discount_percent as insurance_coverage
+    else Insurance expired or missing
+        API->>API: Set insurance_coverage = 0
+    end
+    API->>API: Compute subtotal, insurance_amount, total_amount
+    API->>DB: Save invoice and invoice items
+    API-->>FE: 201 + invoice payload
+    FE-->>R: Display invoice with totals

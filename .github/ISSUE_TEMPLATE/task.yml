@@ -1,0 +1,41 @@
+name: Task
+description: Internal engineering task
+title: "[TASK] "
+labels:
+  - task
+body:
+  - type: input
+    id: goal
+    attributes:
+      label: Goal
+      placeholder: Add CI check for backend tests
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What is in and out of scope
+    validations:
+      required: true
+  - type: textarea
+    id: checklist
+    attributes:
+      label: Implementation Checklist
+      placeholder: |
+        - [ ] Step 1
+        - [ ] Step 2
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+      placeholder: Sprint-3
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3

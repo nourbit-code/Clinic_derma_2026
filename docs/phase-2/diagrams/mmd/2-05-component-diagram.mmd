@@ -1,0 +1,25 @@
+﻿flowchart TB
+    subgraph Client
+      A[Expo React Native App]
+      B[Doctor Screens]
+      C[Receptionist Screens]
+    end
+
+    subgraph API
+      D[Django REST Layer]
+      E[Business Logic in ViewSets]
+      F[Serializers]
+    end
+
+    subgraph Data
+      G[(SQLite Database)]
+      H[Ontology External API]
+    end
+
+    A --> D
+    B --> A
+    C --> A
+    D --> E
+    E --> F
+    E --> G
+    E --> H

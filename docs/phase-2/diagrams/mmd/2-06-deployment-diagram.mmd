@@ -1,0 +1,18 @@
+﻿flowchart LR
+    Dev[Developer Machine]
+    GH[GitHub Repository]
+    CI[GitHub Actions CI]
+    CD[GitHub Actions CD]
+    FE[Frontend Hosting]
+    BE[Backend Hosting]
+    DB[(Production DB)]
+    Users[Doctors and Receptionists]
+
+    Dev --> GH
+    GH --> CI
+    CI --> CD
+    CD --> FE
+    CD --> BE
+    BE --> DB
+    Users --> FE
+    FE --> BE

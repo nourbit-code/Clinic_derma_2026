@@ -1,7 +1,7 @@
 // src/api/appointmentApi.js
 import axios from 'axios';
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
 /**
  * Get all patients for patient selection dropdown
@@ -269,3 +269,5 @@ export const convertTo12Hour = (time24h) => {
   
   return `${hours.toString().padStart(2, '0')}:${minutes} ${modifier}`;
 };
+
+

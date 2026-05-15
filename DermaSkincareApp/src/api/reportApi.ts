@@ -1,5 +1,5 @@
 // Report API Service - Connect reports to backend
-const API_URL = 'http://127.0.0.1:8000/api';
+const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api';
 
 // Types
 export interface ReportAnalytics {
@@ -176,3 +176,5 @@ export async function getNewPatientsReport(period: 'week' | 'month' | 'year' = '
     throw error;
   }
 }
+
+

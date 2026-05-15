@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE = 'http://127.0.0.1:8000/api/'; // change if running on device/emulator
+const API_BASE = `${process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api'}/`; // change if running on device/emulator
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -71,3 +71,5 @@ export const getPatientAllergies = (params = {}) => api.get('patient-allergies/'
 export const createPatientAllergy = (data) => api.post('patient-allergies/', data);
 
 export default api;
+
+

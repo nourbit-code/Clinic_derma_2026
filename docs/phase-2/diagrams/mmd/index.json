@@ -1,0 +1,50 @@
+﻿[
+    {
+        "Number":  "1",
+        "Title":  "Use Case Diagram",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-01-use-case-diagram.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-01-use-case-diagram.png"
+    },
+    {
+        "Number":  "2",
+        "Title":  "Sequence Diagram - Login",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-02-sequence-diagram-login.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-02-sequence-diagram-login.png"
+    },
+    {
+        "Number":  "3",
+        "Title":  "Sequence Diagram - Invoice with Insurance Rules",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-03-sequence-diagram-invoice-with-insurance-rules.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-03-sequence-diagram-invoice-with-insurance-rules.png"
+    },
+    {
+        "Number":  "4",
+        "Title":  "Class Diagram (Domain Model)",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-04-class-diagram-domain-model.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-04-class-diagram-domain-model.png"
+    },
+    {
+        "Number":  "5",
+        "Title":  "Component Diagram",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-05-component-diagram.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-05-component-diagram.png"
+    },
+    {
+        "Number":  "6",
+        "Title":  "Deployment Diagram",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-06-deployment-diagram.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-06-deployment-diagram.png"
+    },
+    {
+        "Number":  "7",
+        "Title":  "Activity Diagram - Appointment and Billing Flow",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-07-activity-diagram-appointment-and-billing-flow.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-07-activity-diagram-appointment-and-billing-flow.png"
+    },
+    {
+        "Number":  "8",
+        "Title":  "State Diagram - Appointment Status",
+        "Mmd":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\mmd\\2-08-state-diagram-appointment-status.mmd",
+        "Png":  "C:\\Users\\yoyom\\Downloads\\Clinic_derma_2026-master\\Clinic_derma_2026-git\\docs\\phase-2\\diagrams\\png\\2-08-state-diagram-appointment-status.png"
+    }
+]

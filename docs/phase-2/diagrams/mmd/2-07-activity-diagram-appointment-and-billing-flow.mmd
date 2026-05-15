@@ -1,0 +1,13 @@
+﻿flowchart TD
+    S([Start]) --> P[Register or Select Patient]
+    P --> B[Book Appointment]
+    B --> C[Doctor Consultation]
+    C --> D[Save Diagnosis and Prescription]
+    D --> I[Create Invoice]
+    I --> Q{Insurance Active}
+    Q -- Yes --> IA[Apply Insurance Coverage]
+    Q -- No --> IB[No Insurance Discount]
+    IA --> T[Calculate Final Total]
+    IB --> T
+    T --> M[Mark Payment Status]
+    M --> Z([Finish])

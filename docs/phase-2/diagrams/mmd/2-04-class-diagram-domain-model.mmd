@@ -1,0 +1,114 @@
+﻿classDiagram
+    class Doctor {
+      +doctor_id
+      +name
+      +specialty
+      +email
+      +password
+    }
+
+    class Receptionist {
+      +receptionist_id
+      +name
+      +email
+      +password
+      +is_admin
+    }
+
+    class InsuranceCompany {
+      +id
+      +name
+      +discount_percent
+    }
+
+    class Patient {
+      +patient_id
+      +name
+      +age
+      +gender
+      +phone
+      +has_insurance
+      +insurance_valid_from
+      +insurance_valid_to
+      +is_insurance_active()
+    }
+
+    class Appointment {
+      +appointment_id
+      +date
+      +time
+      +status
+      +type
+    }
+
+    class Service {
+      +service_id
+      +service_name
+      +price
+      +duration_minutes
+    }
+
+    class MedicalRecord {
+      +record_id
+      +diagnosis
+      +notes
+      +date
+    }
+
+    class Prescription {
+      +prescription_id
+      +notes
+      +date
+    }
+
+    class Medication {
+      +med_id
+      +name
+      +form
+      +strength
+    }
+
+    class Invoice {
+      +invoice_id
+      +subtotal
+      +insurance_coverage
+      +insurance_amount
+      +total_amount
+      +payment_status
+    }
+
+    class InvoiceItem {
+      +item_id
+      +description
+      +quantity
+      +unit_price
+      +amount
+    }
+
+    class InventoryItem {
+      +item_id
+      +name
+      +category
+      +quantity
+      +expiry_date
+      +is_low_stock
+      +is_expiring_soon
+    }
+
+    class StockTransaction {
+      +transaction_id
+      +transaction_type
+      +quantity
+      +performed_by
+    }
+
+    InsuranceCompany "1" --> "0..*" Patient : covers
+    Patient "1" --> "0..*" Appointment : books
+    Doctor "1" --> "0..*" Appointment : attends
+    Appointment "1" --> "0..1" Invoice : billed_as
+    Invoice "1" --> "1..*" InvoiceItem : contains
+    Patient "1" --> "0..*" MedicalRecord : has
+    Doctor "0..1" --> "0..*" MedicalRecord : writes
+    MedicalRecord "1" --> "0..*" Prescription : creates
+    Prescription "1" --> "0..*" Medication : includes
+    InventoryItem "1" --> "0..*" StockTransaction : logs

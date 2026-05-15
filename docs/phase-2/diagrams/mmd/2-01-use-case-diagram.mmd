@@ -1,0 +1,32 @@
+﻿flowchart LR
+    Doctor([Doctor])
+    Receptionist([Receptionist])
+    Patient([Patient])
+
+    UC1((Login))
+    UC2((Manage Patients))
+    UC3((Book Appointments))
+    UC4((Record Diagnosis))
+    UC5((Manage Inventory))
+    UC6((Generate Reports))
+    UC7((Manage Insurance))
+    UC8((Manage Clinic Schedule))
+    UC9((Create Invoice and Mark Paid))
+
+    Doctor --> UC1
+    Doctor --> UC4
+    Doctor --> UC5
+    Doctor --> UC6
+
+    Receptionist --> UC1
+    Receptionist --> UC2
+    Receptionist --> UC3
+    Receptionist --> UC5
+    Receptionist --> UC6
+    Receptionist --> UC7
+    Receptionist --> UC8
+    Receptionist --> UC9
+
+    Patient --> UC2
+    Patient --> UC3
+    Patient --> UC9

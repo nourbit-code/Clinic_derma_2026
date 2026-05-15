@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a new feature or enhancement
+title: "[FEATURE] "
+labels:
+  - enhancement
+  - triage
+body:
+  - type: input
+    id: user_story
+    attributes:
+      label: User Story
+      description: Use the format "As a ..., I want ..., so that ..."
+      placeholder: As a receptionist, I want ...
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: Why this feature is needed
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_criteria
+    attributes:
+      label: Acceptance Criteria
+      placeholder: |
+        - [ ] Criteria 1
+        - [ ] Criteria 2
+    validations:
+      required: true
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
